@@ -500,20 +500,20 @@ const SchedulerCLI: React.FC = () => {
           
           if (file.name.endsWith('.csv')) {
             // Import classes from CSV
-            const result = schedulerAPI.importClassesFromCsv(content, true);
-            message = `Imported ${result.imported} classes from CSV (${result.replaced} replaced, ${result.skipped} skipped)`;
+            const result = schedulerAPI.importClassesFromCsv(content, 'replace');
+            message = `Imported ${result.imported} classes from CSV (replaced: ${result.replaced}, merged: ${result.merged}, skipped: ${result.skipped})`;
           } else if (file.name.endsWith('.json')) {
             // Parse JSON to determine what kind of data it is
             const jsonData = JSON.parse(content);
             
             if (Array.isArray(jsonData) && jsonData.length > 0 && 'name' in jsonData[0]) {
               // It's likely an array of classes
-              schedulerAPI.setClasses(jsonData);
-              message = `Imported ${jsonData.length} classes from JSON file`;
+              const result = schedulerAPI.mergeClasses(jsonData, 'replace');
+              message = `Imported ${result.imported} classes from JSON (replaced: ${result.replaced}, merged: ${result.merged}, skipped: ${result.skipped})`;
             } else if ('classes' in jsonData && Array.isArray(jsonData.classes)) {
               // It's a schedule with classes
-              schedulerAPI.setClasses(jsonData.classes);
-              message = `Imported ${jsonData.classes.length} classes from schedule JSON file`;
+              const result = schedulerAPI.mergeClasses(jsonData.classes, 'replace');
+              message = `Imported ${result.imported} classes from schedule JSON (replaced: ${result.replaced}, merged: ${result.merged}, skipped: ${result.skipped})`;
             } else {
               setOutput(prev => [...prev, { text: 'Unknown JSON format', type: 'error' }]);
               return;

@@ -119,43 +119,26 @@ const FileUploadInterface: React.FC = () => {
       const duplicates = parsedClasses.filter(c => existingClassNames.has(c.name));
       
       if (duplicates.length > 0) {
-        // Ask user what to do with duplicates
-        if (window.confirm(`${duplicates.length} classes with the same names already exist. Replace them?`)) {
-          // Remove existing classes with the same names
-          const filteredClasses = currentClasses.filter(c => !parsedClasses.some(pc => pc.name === c.name));
-          
-          // Add new classes
-          const mergedClasses = [...filteredClasses, ...parsedClasses];
-          
-          // Update the scheduler API
-          schedulerApi.setClasses(mergedClasses);
-          dataUtils.saveClasses(mergedClasses);
-          
-          setMessage({
-            text: `Imported ${parsedClasses.length} classes, replacing ${duplicates.length} existing ones.`,
-            type: 'success'
-          });
-        } else {
-          // User cancelled, only add new classes
-          const newClasses = parsedClasses.filter(c => !existingClassNames.has(c.name));
-          const mergedClasses = [...currentClasses, ...newClasses];
-          
-          schedulerApi.setClasses(mergedClasses);
-          dataUtils.saveClasses(mergedClasses);
-          
-          setMessage({
-            text: `Imported ${newClasses.length} new classes, skipped ${duplicates.length} duplicates.`,
-            type: 'success'
-          });
-        }
-      } else {
-        // No duplicates, just add all classes
-        const mergedClasses = [...currentClasses, ...parsedClasses];
-        schedulerApi.setClasses(mergedClasses);
-        dataUtils.saveClasses(mergedClasses);
+        // Ask user what strategy to use for duplicates
+        const confirmResult = window.confirm(
+          `${duplicates.length} classes with the same names already exist. ` +
+          `Click OK to replace them, or Cancel to merge their conflicts.`
+        );
+        
+        // Use appropriate strategy
+        const mergeStrategy = confirmResult ? 'replace' : 'merge';
+        const result = schedulerApi.mergeClasses(parsedClasses, mergeStrategy);
         
         setMessage({
-          text: `Successfully imported ${parsedClasses.length} classes.`,
+          text: `Imported ${result.imported} classes, replaced ${result.replaced}, merged ${result.merged}, skipped ${result.skipped}`,
+          type: 'success'
+        });
+      } else {
+        // No duplicates, just add all classes
+        const result = schedulerApi.mergeClasses(parsedClasses);
+        
+        setMessage({
+          text: `Successfully imported ${result.imported} classes`,
           type: 'success'
         });
       }

@@ -207,4 +207,204 @@ describe('SchedulerAPI', () => {
       expect(reOptimizedLockedAssignment?.timeSlot.period).toBe(lockedAssignment?.timeSlot.period);
     });
   });
+
+  describe('class merging', () => {
+    it('should import and merge classes using replace strategy', () => {
+      // Add some initial classes
+      api.setClasses([
+        { 
+          id: 'class_1', 
+          name: 'Class 1', 
+          conflicts: [
+            { day: Day.MONDAY, period: 1 as Period },
+            { day: Day.TUESDAY, period: 2 as Period }
+          ] 
+        },
+        { 
+          id: 'class_2', 
+          name: 'Class 2', 
+          conflicts: [
+            { day: Day.WEDNESDAY, period: 3 as Period }
+          ] 
+        }
+      ]);
+      
+      // New classes to import, with one duplicate
+      const newClasses = [
+        { 
+          id: 'imported_1', 
+          name: 'Class 1', // Same name as existing class
+          conflicts: [
+            { day: Day.MONDAY, period: 3 as Period }, // Different conflict
+            { day: Day.FRIDAY, period: 5 as Period } // New conflict
+          ] 
+        },
+        { 
+          id: 'imported_3', 
+          name: 'Class 3', // New class
+          conflicts: [
+            { day: Day.THURSDAY, period: 4 as Period }
+          ] 
+        }
+      ];
+      
+      // Merge with replace strategy
+      const result = api.mergeClasses(newClasses, 'replace');
+      
+      // Check stats
+      expect(result.imported).toBe(2); // Both classes are counted as imported
+      expect(result.replaced).toBe(1); // One class replaced
+      expect(result.skipped).toBe(0);
+      expect(result.merged).toBe(0);
+      
+      // Check results
+      const classes = api.getClasses();
+      expect(classes.length).toBe(3); // 2 original + 1 new - 1 replaced + 1 added = 3
+      
+      // Check the replaced class has the new conflicts
+      const updatedClass = classes.find(c => c.name === 'Class 1');
+      expect(updatedClass).toBeDefined();
+      expect(updatedClass?.conflicts.length).toBe(2);
+      expect(updatedClass?.conflicts.some(c => c.day === Day.MONDAY && c.period === 3)).toBe(true);
+      expect(updatedClass?.conflicts.some(c => c.day === Day.FRIDAY && c.period === 5)).toBe(true);
+      
+      // Ensure original ID is preserved
+      expect(updatedClass?.id).toBe('class_1');
+    });
+    
+    it('should import and merge classes using merge strategy', () => {
+      // Reset
+      api.setClasses([]);
+      
+      // Add some initial classes
+      api.setClasses([
+        { 
+          id: 'class_1', 
+          name: 'Class 1', 
+          conflicts: [
+            { day: Day.MONDAY, period: 1 as Period },
+            { day: Day.TUESDAY, period: 2 as Period }
+          ] 
+        },
+        { 
+          id: 'class_2', 
+          name: 'Class 2', 
+          conflicts: [
+            { day: Day.WEDNESDAY, period: 3 as Period }
+          ] 
+        }
+      ]);
+      
+      // New classes to import, with one duplicate
+      const newClasses = [
+        { 
+          id: 'imported_1', 
+          name: 'Class 1', // Same name as existing class
+          conflicts: [
+            { day: Day.MONDAY, period: 1 as Period }, // Duplicate conflict
+            { day: Day.FRIDAY, period: 5 as Period } // New conflict
+          ] 
+        },
+        { 
+          id: 'imported_3', 
+          name: 'Class 3', // New class
+          conflicts: [
+            { day: Day.THURSDAY, period: 4 as Period }
+          ] 
+        }
+      ];
+      
+      // Merge with merge strategy
+      const result = api.mergeClasses(newClasses, 'merge');
+      
+      // Check stats
+      expect(result.imported).toBe(1); // One new class added
+      expect(result.replaced).toBe(0); // No replacements
+      expect(result.skipped).toBe(0);
+      expect(result.merged).toBe(1); // One class had conflicts merged
+      
+      // Check results
+      const classes = api.getClasses();
+      expect(classes.length).toBe(3); // 2 original + 1 new = 3
+      
+      // Check the merged class has all the conflicts
+      const mergedClass = classes.find(c => c.name === 'Class 1');
+      expect(mergedClass).toBeDefined();
+      expect(mergedClass?.conflicts.length).toBe(3); // 2 original + 1 new (1 duplicate excluded)
+      
+      // Check that only the non-duplicate conflict was added
+      expect(mergedClass?.conflicts.some(c => c.day === Day.MONDAY && c.period === 1)).toBe(true);
+      expect(mergedClass?.conflicts.some(c => c.day === Day.TUESDAY && c.period === 2)).toBe(true);
+      expect(mergedClass?.conflicts.some(c => c.day === Day.FRIDAY && c.period === 5)).toBe(true);
+      
+      // Ensure original ID is preserved
+      expect(mergedClass?.id).toBe('class_1');
+    });
+    
+    it('should import and merge classes using skip strategy', () => {
+      // Reset
+      api.setClasses([]);
+      
+      // Add some initial classes
+      api.setClasses([
+        { 
+          id: 'class_1', 
+          name: 'Class 1', 
+          conflicts: [
+            { day: Day.MONDAY, period: 1 as Period },
+            { day: Day.TUESDAY, period: 2 as Period }
+          ] 
+        },
+        { 
+          id: 'class_2', 
+          name: 'Class 2', 
+          conflicts: [
+            { day: Day.WEDNESDAY, period: 3 as Period }
+          ] 
+        }
+      ]);
+      
+      // New classes to import, with one duplicate
+      const newClasses = [
+        { 
+          id: 'imported_1', 
+          name: 'Class 1', // Same name as existing class
+          conflicts: [
+            { day: Day.FRIDAY, period: 5 as Period } // New conflict
+          ] 
+        },
+        { 
+          id: 'imported_3', 
+          name: 'Class 3', // New class
+          conflicts: [
+            { day: Day.THURSDAY, period: 4 as Period }
+          ] 
+        }
+      ];
+      
+      // Merge with skip strategy
+      const result = api.mergeClasses(newClasses, 'skip');
+      
+      // Check stats
+      expect(result.imported).toBe(1); // One new class added
+      expect(result.replaced).toBe(0); // No replacements
+      expect(result.skipped).toBe(1); // One class skipped
+      expect(result.merged).toBe(0); // No merges
+      
+      // Check results
+      const classes = api.getClasses();
+      expect(classes.length).toBe(3); // 2 original + 1 new = 3
+      
+      // Check the skipped class still has only original conflicts
+      const skippedClass = classes.find(c => c.name === 'Class 1');
+      expect(skippedClass).toBeDefined();
+      expect(skippedClass?.conflicts.length).toBe(2); // Original conflicts only
+      expect(skippedClass?.conflicts.some(c => c.day === Day.MONDAY && c.period === 1)).toBe(true);
+      expect(skippedClass?.conflicts.some(c => c.day === Day.TUESDAY && c.period === 2)).toBe(true);
+      
+      // Check that the new class was added
+      const newClass = classes.find(c => c.name === 'Class 3');
+      expect(newClass).toBeDefined();
+    });
+  });
 });

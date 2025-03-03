@@ -397,13 +397,14 @@ export class SchedulerAPI {
   /**
    * Import classes from CSV content
    * @param csvContent The CSV content to parse
-   * @param replaceExisting If true, replaces existing classes with the same name; if false, keeps existing classes
+   * @param mergeStrategy Strategy for handling duplicate classes: 'replace', 'skip', or 'merge'
    * @returns Object containing counts of imported, replaced, and skipped classes
    */
-  importClassesFromCsv(csvContent: string, replaceExisting: boolean = false): { 
+  importClassesFromCsv(csvContent: string, mergeStrategy: 'replace' | 'skip' | 'merge' = 'replace'): { 
     imported: number; 
     replaced: number;
     skipped: number;
+    merged: number;
   } {
     // Parse the CSV content
     const importedClasses = dataUtils.parseClassesFromCSV(csvContent);
@@ -412,9 +413,25 @@ export class SchedulerAPI {
       throw new Error('No valid class data found in the CSV file');
     }
     
+    return this.mergeClasses(importedClasses, mergeStrategy);
+  }
+
+  /**
+   * Merge a list of classes with existing classes based on a specified strategy
+   * @param classes Classes to merge with existing classes
+   * @param mergeStrategy Strategy for handling duplicate classes: 'replace', 'skip', or 'merge'
+   * @returns Statistics about the merge operation
+   */
+  mergeClasses(classes: Class[], mergeStrategy: 'replace' | 'skip' | 'merge' = 'replace'): {
+    imported: number;
+    replaced: number;
+    skipped: number;
+    merged: number;
+  } {
     // Track statistics
     let replaced = 0;
     let skipped = 0;
+    let merged = 0;
     
     // Create a map of existing classes by name for quick lookup
     const existingClassesByName = new Map(
@@ -424,11 +441,11 @@ export class SchedulerAPI {
     // Process imported classes
     const updatedClasses: Class[] = [...this.classes];
     
-    for (const importedClass of importedClasses) {
+    for (const importedClass of classes) {
       const existingClass = existingClassesByName.get(importedClass.name);
       
       if (existingClass) {
-        if (replaceExisting) {
+        if (mergeStrategy === 'replace') {
           // Replace the existing class
           const index = updatedClasses.findIndex(c => c.id === existingClass.id);
           if (index >= 0) {
@@ -439,7 +456,29 @@ export class SchedulerAPI {
             };
             replaced++;
           }
-        } else {
+        } else if (mergeStrategy === 'merge') {
+          // Merge conflicts
+          const index = updatedClasses.findIndex(c => c.id === existingClass.id);
+          if (index >= 0) {
+            // Create a set of existing conflicts to avoid duplicates
+            const existingConflictSet = new Set(
+              existingClass.conflicts.map(c => `${c.day}:${c.period}`)
+            );
+            
+            // Filter out any duplicates from imported conflicts
+            const newConflicts = importedClass.conflicts.filter(
+              c => !existingConflictSet.has(`${c.day}:${c.period}`)
+            );
+            
+            // Merge conflicts
+            updatedClasses[index] = {
+              ...existingClass,
+              conflicts: [...existingClass.conflicts, ...newConflicts]
+            };
+            
+            merged++;
+          }
+        } else if (mergeStrategy === 'skip') {
           // Skip this class
           skipped++;
         }
@@ -459,10 +498,59 @@ export class SchedulerAPI {
     }
     
     return {
-      imported: importedClasses.length - skipped,
+      imported: classes.length - skipped - merged,
       replaced,
-      skipped
+      skipped,
+      merged
     };
+  }
+
+  /**
+   * Get class by ID
+   * @param id Class ID
+   * @returns Class or undefined if not found
+   */
+  getClassById(id: string): Class | undefined {
+    return this.classes.find(c => c.id === id);
+  }
+
+  /**
+   * Get class by name
+   * @param name Class name
+   * @returns Class or undefined if not found
+   */
+  getClassByName(name: string): Class | undefined {
+    return this.classes.find(c => c.name === name);
+  }
+
+  /**
+   * Update class conflicts
+   * @param classId ID of the class to update
+   * @param conflicts New conflicts array
+   * @returns Updated class or undefined if class not found
+   */
+  updateClassConflicts(classId: string, conflicts: { day: Day; period: Period }[]): Class | undefined {
+    const classIndex = this.classes.findIndex(c => c.id === classId);
+    if (classIndex === -1) return undefined;
+    
+    // Update conflicts
+    const updatedClass = {
+      ...this.classes[classIndex],
+      conflicts
+    };
+    
+    // Update class in the array
+    this.classes[classIndex] = updatedClass;
+    
+    // Update scheduler
+    this.scheduler.setClasses(this.classes);
+    
+    // Update storage
+    if (!isTestEnv()) {
+      dataUtils.saveClasses(this.classes);
+    }
+    
+    return updatedClass;
   }
 }
 

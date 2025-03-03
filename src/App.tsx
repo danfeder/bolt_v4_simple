@@ -5,6 +5,7 @@ import ConstraintInputForm from './components/ConstraintInputForm';
 import ConstraintSetManager from './components/ConstraintSetManager';
 import WeeklyScheduleDashboard from './components/WeeklyScheduleDashboard';
 import FileUploadInterface from './components/FileUploadInterface';
+import ClassManager from './components/ClassManager';
 import { SchedulingConstraints, Schedule } from './models/types';
 import { dataUtils } from './utils/dataUtils';
 
@@ -88,6 +89,7 @@ function App() {
             <Tab label="Constraints" />
             <Tab label="Saved Sets" />
             <Tab label="Schedule" />
+            <Tab label="Class Manager" />
             <Tab label="File Management" />
             <Tab label="CLI" />
           </Tabs>
@@ -119,8 +121,9 @@ function App() {
               onScheduleChange={handleScheduleChange}
             />
           }
-          {activeTab === 3 && <FileUploadInterface />}
-          {activeTab === 4 && <SchedulerCLI />}
+          {activeTab === 3 && <ClassManager />}
+          {activeTab === 4 && <FileUploadInterface />}
+          {activeTab === 5 && <SchedulerCLI />}
         </Box>
       </Box>
       
