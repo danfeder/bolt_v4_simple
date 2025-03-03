@@ -25,6 +25,14 @@ import {
   Snackbar,
   Tab,
   Tabs,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Tooltip,
+  ButtonGroup,
+  Badge,
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
@@ -46,6 +54,7 @@ const ClassManager: React.FC = () => {
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editingClass, setEditingClass] = useState<Partial<Class>>({});
+  const [searchTerm, setSearchTerm] = useState('');
   const [notification, setNotification] = useState<{
     open: boolean;
     message: string;
@@ -134,6 +143,76 @@ const ClassManager: React.FC = () => {
       ...prev,
       conflicts: (prev.conflicts || []).filter((_, i) => i !== index)
     }));
+  };
+
+  // Add common conflict patterns
+  const handleAddConflictPattern = (pattern: 'all-day' | 'morning' | 'afternoon', day: Day) => {
+    let newConflicts: { day: Day; period: Period }[] = [];
+    
+    switch (pattern) {
+      case 'all-day':
+        // Add periods 1-8 for the selected day
+        newConflicts = [1, 2, 3, 4, 5, 6, 7, 8].map(period => ({ 
+          day, 
+          period: period as Period 
+        }));
+        break;
+      case 'morning':
+        // Add periods 1-4 (morning)
+        newConflicts = [1, 2, 3, 4].map(period => ({ 
+          day, 
+          period: period as Period 
+        }));
+        break;
+      case 'afternoon':
+        // Add periods 5-8 (afternoon)
+        newConflicts = [5, 6, 7, 8].map(period => ({ 
+          day, 
+          period: period as Period 
+        }));
+        break;
+    }
+    
+    // Filter out conflicts that already exist
+    const existingConflicts = new Set(
+      (editingClass.conflicts || []).map(c => `${c.day}-${c.period}`)
+    );
+    
+    const filteredNewConflicts = newConflicts.filter(
+      c => !existingConflicts.has(`${c.day}-${c.period}`)
+    );
+    
+    if (filteredNewConflicts.length === 0) {
+      showNotification('All these conflicts already exist', 'info');
+      return;
+    }
+    
+    // Add the new conflicts
+    setEditingClass(prev => ({
+      ...prev,
+      conflicts: [
+        ...(prev.conflicts || []),
+        ...filteredNewConflicts
+      ]
+    }));
+    
+    showNotification(`Added ${filteredNewConflicts.length} conflicts for ${day}`, 'success');
+  };
+
+  // Clear all conflicts for a class
+  const handleClearAllConflicts = () => {
+    if (!editingClass.conflicts || editingClass.conflicts.length === 0) {
+      showNotification('No conflicts to clear', 'info');
+      return;
+    }
+    
+    if (window.confirm(`Are you sure you want to clear all ${editingClass.conflicts.length} conflicts?`)) {
+      setEditingClass(prev => ({
+        ...prev,
+        conflicts: []
+      }));
+      showNotification('All conflicts cleared', 'success');
+    }
   };
 
   // Save the class
@@ -231,6 +310,62 @@ const ClassManager: React.FC = () => {
     ? classes.find(c => c.id === selectedClassId) 
     : null;
 
+  // Filter classes based on search term
+  const filteredClasses = classes.filter(classObj => 
+    searchTerm === '' || 
+    classObj.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  /**
+   * Conflict Visualization Grid component to show conflicts in a calendar-like view
+   */
+  const ConflictGrid: React.FC<{ conflicts: { day: Day; period: Period }[] }> = ({ conflicts }) => {
+    const days = [Day.MONDAY, Day.TUESDAY, Day.WEDNESDAY, Day.THURSDAY, Day.FRIDAY];
+    const periods = [1, 2, 3, 4, 5, 6, 7, 8];
+    
+    // Check if a specific day and period has a conflict
+    const hasConflict = (day: Day, period: number) => {
+      return conflicts.some(c => c.day === day && c.period === period);
+    };
+    
+    return (
+      <Box sx={{ mt: 2, overflowX: 'auto' }}>
+        <Table size="small" sx={{ minWidth: 400 }}>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 'bold', width: 100 }}>Period</TableCell>
+              {days.map(day => (
+                <TableCell key={day} align="center" sx={{ fontWeight: 'bold' }}>
+                  {day.charAt(0) + day.slice(1).toLowerCase()}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {periods.map(period => (
+              <TableRow key={period}>
+                <TableCell sx={{ fontWeight: 'bold' }}>Period {period}</TableCell>
+                {days.map(day => (
+                  <TableCell 
+                    key={`${day}-${period}`} 
+                    align="center"
+                    sx={{
+                      bgcolor: hasConflict(day, period) ? 'error.light' : 'inherit',
+                      color: hasConflict(day, period) ? 'error.contrastText' : 'inherit',
+                      fontWeight: hasConflict(day, period) ? 'bold' : 'normal',
+                    }}
+                  >
+                    {hasConflict(day, period) ? '✘' : ''}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Box>
+    );
+  };
+
   return (
     <Paper elevation={3} sx={{ p: 3, maxWidth: 800, mx: 'auto', mt: 2 }}>
       <Typography variant="h5" component="h2" gutterBottom>
@@ -245,18 +380,42 @@ const ClassManager: React.FC = () => {
       </Box>
       
       {activeTab === 0 && (
-        <Grid container spacing={2}>
+        <Grid container spacing={3}>
           <Grid item xs={12} md={5}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">
-                Class List ({classes.length})
+            <Box sx={{ mb: 2 }}>
+              <TextField
+                fullWidth
+                variant="outlined"
+                placeholder="Search classes..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                size="small"
+                InputProps={{
+                  startAdornment: (
+                    <Box component="span" sx={{ color: 'text.secondary', mr: 1 }}>
+                      🔍
+                    </Box>
+                  ),
+                  endAdornment: searchTerm && (
+                    <IconButton
+                      size="small"
+                      onClick={() => setSearchTerm('')}
+                    >
+                      <CancelIcon fontSize="small" />
+                    </IconButton>
+                  )
+                }}
+              />
+            </Box>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="subtitle1">
+                Classes ({filteredClasses.length})
               </Typography>
               <Button
-                variant="contained"
-                color="primary"
+                size="small"
                 startIcon={<AddIcon />}
                 onClick={handleNewClass}
-                size="small"
               >
                 New Class
               </Button>
@@ -268,44 +427,72 @@ const ClassManager: React.FC = () => {
               border: '1px solid #e0e0e0',
               borderRadius: 1
             }}>
-              {classes.length === 0 ? (
+              {filteredClasses.length === 0 ? (
                 <ListItem>
-                  <ListItemText primary="No classes available" />
+                  <ListItemText 
+                    primary={
+                      searchTerm 
+                        ? `No classes matching "${searchTerm}"` 
+                        : "No classes available"
+                    }
+                    secondary={
+                      searchTerm 
+                        ? "Try a different search term" 
+                        : "Click the 'New Class' button to add one"
+                    }
+                  />
                 </ListItem>
               ) : (
-                classes.map((classObj) => (
+                filteredClasses.map((classObj) => (
                   <ListItem
                     key={classObj.id}
                     selected={classObj.id === selectedClassId}
                     onClick={() => handleSelectClass(classObj.id)}
                     sx={{ cursor: 'pointer' }}
+                    secondaryAction={
+                      <ListItemSecondaryAction>
+                        <Tooltip title="Edit class">
+                          <IconButton
+                            edge="end"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditClass(classObj);
+                            }}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete class">
+                          <IconButton
+                            edge="end"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleConfirmDelete(classObj.id);
+                            }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </ListItemSecondaryAction>
+                    }
                   >
-                    <ListItemText
-                      primary={classObj.name}
-                      secondary={`${classObj.conflicts.length} conflicts`}
+                    <ListItemText 
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          {classObj.name}
+                          {classObj.conflicts.length > 0 && (
+                            <Tooltip title={`${classObj.conflicts.length} conflicts`}>
+                              <Badge 
+                                badgeContent={classObj.conflicts.length} 
+                                color="primary"
+                                sx={{ ml: 1 }}
+                              />
+                            </Tooltip>
+                          )}
+                        </Box>
+                      }
+                      secondary={`${classObj.conflicts.length} conflict${classObj.conflicts.length !== 1 ? 's' : ''}`}
                     />
-                    <ListItemSecondaryAction>
-                      <IconButton 
-                        edge="end" 
-                        aria-label="edit"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditClass(classObj);
-                        }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton 
-                        edge="end" 
-                        aria-label="delete"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleConfirmDelete(classObj.id);
-                        }}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </ListItemSecondaryAction>
                   </ListItem>
                 ))
               )}
@@ -334,6 +521,11 @@ const ClassManager: React.FC = () => {
                 
                 <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>
                   Conflicts
+                  <Tooltip title="Add/remove specific conflicts or use quick-add buttons for common patterns">
+                    <IconButton size="small" sx={{ ml: 1 }}>
+                      <Box component="span" sx={{ fontSize: '16px' }}>ℹ️</Box>
+                    </IconButton>
+                  </Tooltip>
                 </Typography>
                 
                 <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
@@ -369,13 +561,54 @@ const ClassManager: React.FC = () => {
                     </Select>
                   </FormControl>
                   
-                  <Button 
-                    variant="contained" 
-                    color="primary"
-                    onClick={handleAddConflict}
-                  >
-                    Add
-                  </Button>
+                  <Tooltip title="Add this specific conflict">
+                    <Button 
+                      variant="contained" 
+                      color="primary"
+                      onClick={handleAddConflict}
+                    >
+                      Add
+                    </Button>
+                  </Tooltip>
+                </Box>
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    Quick Add
+                  </Typography>
+                  
+                  <Grid container spacing={1}>
+                    {[Day.MONDAY, Day.TUESDAY, Day.WEDNESDAY, Day.THURSDAY, Day.FRIDAY].map(day => (
+                      <Grid item key={day}>
+                        <ButtonGroup size="small" variant="outlined">
+                          <Tooltip title={`Add all periods for ${day}`}>
+                            <Button 
+                              onClick={() => handleAddConflictPattern('all-day', day)}
+                              color="error"
+                            >
+                              {day.substring(0, 3)}
+                            </Button>
+                          </Tooltip>
+                          <Tooltip title={`Add morning periods (1-4) for ${day}`}>
+                            <Button 
+                              onClick={() => handleAddConflictPattern('morning', day)}
+                              color="primary"
+                            >
+                              AM
+                            </Button>
+                          </Tooltip>
+                          <Tooltip title={`Add afternoon periods (5-8) for ${day}`}>
+                            <Button 
+                              onClick={() => handleAddConflictPattern('afternoon', day)}
+                              color="secondary"
+                            >
+                              PM
+                            </Button>
+                          </Tooltip>
+                        </ButtonGroup>
+                      </Grid>
+                    ))}
+                  </Grid>
                 </Box>
                 
                 <Box sx={{ 
@@ -393,17 +626,43 @@ const ClassManager: React.FC = () => {
                       No conflicts added yet
                     </Typography>
                   ) : (
-                    (editingClass.conflicts || []).map((conflict, index) => (
-                      <Chip
-                        key={`${conflict.day}-${conflict.period}`}
-                        label={`${conflict.day} - Period ${conflict.period}`}
-                        onDelete={() => handleRemoveConflict(index)}
-                        color="primary"
-                        variant="outlined"
-                      />
-                    ))
+                    <>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, width: '100%' }}>
+                        {(editingClass.conflicts || []).map((conflict, index) => (
+                          <Chip
+                            key={`${conflict.day}-${conflict.period}`}
+                            label={`${conflict.day} - Period ${conflict.period}`}
+                            onDelete={() => handleRemoveConflict(index)}
+                            color="primary"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                      
+                      <Box sx={{ width: '100%', display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                        <Tooltip title="Clear all conflicts">
+                          <Button 
+                            size="small" 
+                            color="error" 
+                            variant="outlined"
+                            onClick={handleClearAllConflicts}
+                          >
+                            Clear All
+                          </Button>
+                        </Tooltip>
+                      </Box>
+                    </>
                   )}
                 </Box>
+                
+                {(editingClass.conflicts || []).length > 0 && (
+                  <>
+                    <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+                      Weekly Conflict View
+                    </Typography>
+                    <ConflictGrid conflicts={editingClass.conflicts || []} />
+                  </>
+                )}
                 
                 <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
                   <Button
@@ -458,23 +717,30 @@ const ClassManager: React.FC = () => {
                     This class has no conflicts
                   </Alert>
                 ) : (
-                  <Box sx={{ 
-                    display: 'flex', 
-                    flexWrap: 'wrap', 
-                    gap: 1,
-                    maxHeight: 200,
-                    overflow: 'auto',
-                    p: 1
-                  }}>
-                    {selectedClass.conflicts.map((conflict, index) => (
-                      <Chip
-                        key={index}
-                        label={`${conflict.day} - Period ${conflict.period}`}
-                        color="primary"
-                        variant="outlined"
-                      />
-                    ))}
-                  </Box>
+                  <>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      flexWrap: 'wrap', 
+                      gap: 1,
+                      maxHeight: 200,
+                      overflow: 'auto',
+                      p: 1
+                    }}>
+                      {selectedClass.conflicts.map((conflict, index) => (
+                        <Chip
+                          key={index}
+                          label={`${conflict.day} - Period ${conflict.period}`}
+                          color="primary"
+                          variant="outlined"
+                        />
+                      ))}
+                    </Box>
+                    
+                    <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+                      Weekly Conflict View
+                    </Typography>
+                    <ConflictGrid conflicts={selectedClass.conflicts} />
+                  </>
                 )}
               </Box>
             ) : (

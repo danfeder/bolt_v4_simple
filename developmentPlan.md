@@ -155,8 +155,8 @@ Build a lean, user-friendly scheduling tool that:
 ### Phase 5: File Management for Class Conflict Data
 - **Task 5.1:** Build the file upload interface for CSV/JSON files.
   - Validate file structure (classes as rows, days as columns with numeric conflict periods). *(Completed)*
-- **Task 5.2:** Merge uploaded data with in-memory class data.
-- **Task 5.3:** Create dedicated screens for editing and adding classes.
+- **Task 5.2:** Merge uploaded data with in-memory class data. *(Completed)*
+- **Task 5.3:** Create dedicated screens for editing and adding classes. *(Completed)*
 - **Task 5.4:** Implement export functionality for class data (CSV/JSON).
 
 ### Phase 6: Schedule Export and Persistence
