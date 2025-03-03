@@ -312,4 +312,24 @@ export class FitnessEvaluator {
     const violations = this.getViolations(chromosome);
     return violations.map(v => v.description);
   }
+  
+  /**
+   * Evaluates a chromosome and returns detailed results
+   * @param chromosome Chromosome to evaluate
+   * @returns Object containing validation results
+   */
+  evaluateWithDetails(chromosome: Chromosome): { 
+    isValid: boolean; 
+    hardConstraintViolations: number;
+    violationDetails: string[];
+    fitnessScore: number;
+  } {
+    const result = this.evaluate(chromosome);
+    return {
+      isValid: result.hardConstraintViolations === 0,
+      hardConstraintViolations: result.hardConstraintViolations,
+      violationDetails: result.violations.map(v => v.description),
+      fitnessScore: result.fitnessScore
+    };
+  }
 }

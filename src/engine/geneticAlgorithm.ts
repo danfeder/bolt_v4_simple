@@ -4,16 +4,20 @@ import { Population } from './population';
 import { FitnessEvaluator } from './fitness';
 import { Class, GeneticAlgorithmConfig } from '../models/types';
 
+/**
+ * The GeneticAlgorithm class is responsible for running the genetic algorithm
+ * and evolving a population of chromosomes to find the best solution.
+ */
 export class GeneticAlgorithm {
   private population: Population;
   private fitnessEvaluator: FitnessEvaluator;
   private geneticOperators: GeneticOperators;
   private generation: number = 0;
   private bestChromosome: Chromosome | null = null;
-
+  
   /**
-   * Creates a new GeneticAlgorithm instance
-   * @param classes Classes to schedule
+   * Creates a new genetic algorithm
+   * @param classes List of classes to schedule
    * @param config Configuration for the genetic algorithm
    */
   constructor(
@@ -37,17 +41,44 @@ export class GeneticAlgorithm {
     // Evaluate fitness of initial population
     this.evaluatePopulation();
   }
-
+  
   /**
    * Run the genetic algorithm for the specified number of generations
    * @returns The best chromosome found
    */
   evolve(): Chromosome {
+    // Run for the specified number of generations
     for (let i = 0; i < this.config.generations; i++) {
       this.nextGeneration();
     }
     
     return this.getBestChromosome();
+  }
+  
+  /**
+   * Run the genetic algorithm with a provided initial population
+   * This is useful for re-optimization with locked assignments
+   * 
+   * @param initialPopulation Array of chromosomes to use as the initial population
+   * @returns The best chromosome found
+   */
+  evolveWithInitialPopulation(initialPopulation: Chromosome[]): Chromosome {
+    // Initialize the population with the provided chromosomes
+    this.population = new Population(
+      this.config.populationSize,
+      () => Chromosome.createRandom(this.classes)
+    );
+    this.population.replaceWith(initialPopulation);
+    
+    // Reset generation counter and best chromosome
+    this.generation = 0;
+    this.bestChromosome = null;
+    
+    // Evaluate initial population
+    this.evaluatePopulation();
+    
+    // Run the genetic algorithm
+    return this.evolve();
   }
   
   /**

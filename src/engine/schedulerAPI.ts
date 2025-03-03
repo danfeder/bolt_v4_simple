@@ -189,6 +189,44 @@ export class SchedulerAPI {
   }
 
   /**
+   * Re-optimizes a schedule while keeping specified assignments locked
+   * This allows for manual adjustments to remain fixed while the algorithm
+   * optimizes the rest of the schedule around them.
+   * 
+   * @param lockedAssignments Array of class IDs that should not be moved
+   * @param schedule Optional schedule to optimize (uses current schedule if not provided)
+   * @returns A new optimized schedule that respects the locked assignments
+   */
+  reOptimizeSchedule(lockedAssignments: string[], schedule?: Schedule): Schedule {
+    if (this.classes.length === 0) {
+      throw new Error('No classes to re-optimize');
+    }
+    
+    // Use provided schedule or current schedule
+    const scheduleToOptimize = schedule || this.currentSchedule;
+    
+    if (!scheduleToOptimize) {
+      throw new Error('No schedule available for re-optimization');
+    }
+    
+    // Perform re-optimization
+    const reOptimizedSchedule = this.scheduler.reOptimizeSchedule(
+      scheduleToOptimize,
+      lockedAssignments
+    );
+    
+    // Update current schedule
+    this.currentSchedule = reOptimizedSchedule;
+    
+    // Persist to storage if not in test environment
+    if (!isTestEnv()) {
+      dataUtils.saveSchedule(reOptimizedSchedule);
+    }
+    
+    return reOptimizedSchedule;
+  }
+
+  /**
    * Saves the current schedule to storage
    * @param schedule The schedule to save (or current schedule if not provided)
    * @returns The saved schedule

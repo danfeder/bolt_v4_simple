@@ -25,19 +25,21 @@ export class Population {
   /**
    * Creates a new population
    * @param populationSize Size of the population
-   * @param chromosomeGenerator Function to generate new chromosomes
+   * @param chromosomeGenerator Optional function to generate new chromosomes
    */
   constructor(
     populationSize: number,
-    private chromosomeGenerator: () => Chromosome
+    private chromosomeGenerator?: () => Chromosome
   ) {
     this.size = populationSize;
     this.fitnessScores = new Map();
     this.chromosomes = [];
     
-    // Generate initial population
-    for (let i = 0; i < populationSize; i++) {
-      this.chromosomes.push(chromosomeGenerator());
+    // Only generate initial population if a generator is provided
+    if (chromosomeGenerator) {
+      for (let i = 0; i < populationSize; i++) {
+        this.chromosomes.push(chromosomeGenerator());
+      }
     }
   }
   
@@ -67,32 +69,43 @@ export class Population {
   }
   
   /**
-   * Gets the best chromosome in the population
-   * @returns Best chromosome based on fitness score
+   * Gets the best chromosome in the population based on fitness score
+   * @returns Best chromosome
    */
   getBestChromosome(): Chromosome {
+    // Sort if not already sorted
+    this.sortByFitness();
+    
     if (this.chromosomes.length === 0) {
-      throw new Error('Population is empty');
+      throw new Error("Population is empty");
     }
     
-    // If fitness scores are not computed, return the first chromosome
-    if (this.fitnessScores.size === 0) {
-      return this.chromosomes[0];
+    return this.chromosomes[0];
+  }
+  
+  /**
+   * Gets the fittest chromosome in the population (alias for getBestChromosome)
+   * @returns Fittest chromosome based on fitness score
+   */
+  getFittestChromosome(): Chromosome {
+    return this.getBestChromosome();
+  }
+  
+  /**
+   * Gets the top N fittest chromosomes from the population
+   * @param count Number of chromosomes to get
+   * @returns Array of the fittest chromosomes
+   */
+  getFittestChromosomes(count: number): Chromosome[] {
+    // Sort if not already sorted
+    this.sortByFitness();
+    
+    if (count <= 0) {
+      return [];
     }
     
-    // Find the chromosome with the highest fitness score
-    let bestChromosome = this.chromosomes[0];
-    let bestFitness = this.fitnessScores.get(bestChromosome) || 0;
-    
-    for (const chromosome of this.chromosomes) {
-      const fitness = this.fitnessScores.get(chromosome) || 0;
-      if (fitness > bestFitness) {
-        bestFitness = fitness;
-        bestChromosome = chromosome;
-      }
-    }
-    
-    return bestChromosome;
+    // Return at most count chromosomes
+    return this.chromosomes.slice(0, Math.min(count, this.chromosomes.length));
   }
   
   /**
@@ -197,10 +210,12 @@ export class Population {
   replacePopulation(newChromosomes: Chromosome[]): void {
     // Ensure the new population has the correct size
     if (newChromosomes.length < this.size) {
-      // If not enough chromosomes, generate additional ones
-      const additionalCount = this.size - newChromosomes.length;
-      for (let i = 0; i < additionalCount; i++) {
-        newChromosomes.push(this.chromosomeGenerator());
+      // If not enough chromosomes and we have a generator, generate additional ones
+      if (this.chromosomeGenerator) {
+        const additionalCount = this.size - newChromosomes.length;
+        for (let i = 0; i < additionalCount; i++) {
+          newChromosomes.push(this.chromosomeGenerator());
+        }
       }
     } else if (newChromosomes.length > this.size) {
       // If too many chromosomes, keep only the first size
@@ -234,9 +249,11 @@ export class Population {
     // Copy chromosomes to the population
     this.chromosomes = [...chromosomes];
     
-    // If the new population is smaller than the desired size, fill with random chromosomes
-    while (this.chromosomes.length < this.size) {
-      this.chromosomes.push(this.chromosomeGenerator());
+    // If the new population is smaller than the desired size and we have a generator, fill with random chromosomes
+    if (this.chromosomeGenerator) {
+      while (this.chromosomes.length < this.size) {
+        this.chromosomes.push(this.chromosomeGenerator());
+      }
     }
   }
   
@@ -247,37 +264,5 @@ export class Population {
     this.chromosomes.sort((a, b) => 
       (this.fitnessScores.get(b) || 0) - (this.fitnessScores.get(a) || 0)
     );
-  }
-  
-  /**
-   * Gets the fittest chromosome in the population
-   * @returns The chromosome with the highest fitness
-   */
-  getFittestChromosome(): Chromosome {
-    // Sort if not already sorted
-    this.sortByFitness();
-    
-    if (this.chromosomes.length === 0) {
-      throw new Error("Population is empty");
-    }
-    
-    return this.chromosomes[0];
-  }
-  
-  /**
-   * Gets the top n fittest chromosomes from the population
-   * @param n Number of chromosomes to return
-   * @returns Array of the n fittest chromosomes
-   */
-  getFittestChromosomes(n: number): Chromosome[] {
-    // Sort if not already sorted
-    this.sortByFitness();
-    
-    if (n <= 0) {
-      return [];
-    }
-    
-    // Return at most n chromosomes
-    return this.chromosomes.slice(0, Math.min(n, this.chromosomes.length));
   }
 }

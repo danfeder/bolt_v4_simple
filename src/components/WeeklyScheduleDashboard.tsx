@@ -8,7 +8,13 @@ import {
   Snackbar, 
   Alert,
   CircularProgress,
-  Divider
+  Divider,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -49,6 +55,11 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
     message: '',
     severity: 'info'
   });
+  
+  // State for re-optimization
+  const [isReOptimizing, setIsReOptimizing] = useState(false);
+  const [reOptimizeDialogOpen, setReOptimizeDialogOpen] = useState(false);
+  const [manuallyAdjustedClasses, setManuallyAdjustedClasses] = useState<Set<string>>(new Set());
   
   // State for the temporary storage zone
   const [tempStorage, setTempStorage] = useState<{
@@ -130,6 +141,13 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
       { day, period }
     );
     
+    // Add this class to the manually adjusted classes set
+    setManuallyAdjustedClasses(prev => {
+      const updated = new Set(prev);
+      updated.add(item.classId);
+      return updated;
+    });
+    
     // Update the schedule in state and API
     updateSchedule(updatedSchedule);
     
@@ -170,6 +188,13 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
         assignment => assignment.classId !== item.classId
       )
     };
+    
+    // Add this class to the manually adjusted classes set
+    setManuallyAdjustedClasses(prev => {
+      const updated = new Set(prev);
+      updated.add(item.classId);
+      return updated;
+    });
     
     // Update the schedule in state and API
     updateSchedule(updatedSchedule);
@@ -215,6 +240,50 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
   // Find the class object for a given class ID
   const getClassById = (classId: string): Class | undefined => {
     return classes.find(c => c.id === classId);
+  };
+
+  // Handle re-optimization
+  const handleReOptimize = () => {
+    setReOptimizeDialogOpen(true);
+  };
+
+  // Confirm re-optimization
+  const confirmReOptimize = async () => {
+    if (!currentSchedule) return;
+    
+    setReOptimizeDialogOpen(false);
+    setIsReOptimizing(true);
+    
+    try {
+      // Convert manually adjusted classes set to array
+      const lockedAssignments = Array.from(manuallyAdjustedClasses);
+      
+      // Use the schedulerAPI to re-optimize
+      const reOptimizedSchedule = await schedulerApi.reOptimizeSchedule(lockedAssignments);
+      
+      // Update the schedule
+      setCurrentSchedule(reOptimizedSchedule);
+      
+      // Notify parent component about the change
+      if (onScheduleChange) {
+        onScheduleChange(reOptimizedSchedule);
+      }
+      
+      showNotification(
+        `Schedule successfully re-optimized while preserving ${lockedAssignments.length} manual adjustments`, 
+        'success'
+      );
+    } catch (err) {
+      console.error('Error during re-optimization:', err);
+      showNotification('Failed to re-optimize schedule. Please try again.', 'error');
+    } finally {
+      setIsReOptimizing(false);
+    }
+  };
+
+  // Cancel re-optimization
+  const cancelReOptimize = () => {
+    setReOptimizeDialogOpen(false);
   };
 
   // Handle saving the current schedule (button click)
@@ -377,7 +446,18 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
           ))}
         </Grid>
         
-        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
+          <Tooltip title="Re-optimize the schedule while preserving your manual adjustments">
+            <Button 
+              variant="outlined" 
+              color="secondary" 
+              onClick={handleReOptimize}
+              disabled={isReOptimizing || manuallyAdjustedClasses.size === 0}
+            >
+              {isReOptimizing ? 'Re-Optimizing...' : 'Re-Optimize Schedule'}
+            </Button>
+          </Tooltip>
+          
           <Button 
             variant="contained" 
             color="primary" 
@@ -387,6 +467,29 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
           </Button>
         </Box>
       </Paper>
+      
+      {/* Re-optimization confirmation dialog */}
+      <Dialog
+        open={reOptimizeDialogOpen}
+        onClose={cancelReOptimize}
+      >
+        <DialogTitle>Confirm Schedule Re-Optimization</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Re-optimization will keep your {manuallyAdjustedClasses.size} manually adjusted classes in their current positions, 
+            while optimizing the schedule for the remaining classes. This may significantly change 
+            the positions of non-adjusted classes to achieve the best overall schedule.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={cancelReOptimize} color="primary">
+            Cancel
+          </Button>
+          <Button onClick={confirmReOptimize} color="primary" variant="contained">
+            Re-Optimize
+          </Button>
+        </DialogActions>
+      </Dialog>
       
       {/* Enhanced notification system */}
       <Snackbar
