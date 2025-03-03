@@ -6,6 +6,7 @@ import ConstraintSetManager from './components/ConstraintSetManager';
 import WeeklyScheduleDashboard from './components/WeeklyScheduleDashboard';
 import FileUploadInterface from './components/FileUploadInterface';
 import ClassManager from './components/ClassManager';
+import ScheduleExport from './components/ScheduleExport';
 import { SchedulingConstraints, Schedule } from './models/types';
 import { dataUtils } from './utils/dataUtils';
 
@@ -91,6 +92,7 @@ function App() {
             <Tab label="Schedule" />
             <Tab label="Class Manager" />
             <Tab label="File Management" />
+            <Tab label="Export" />
             <Tab label="CLI" />
           </Tabs>
         </Box>
@@ -123,7 +125,8 @@ function App() {
           }
           {activeTab === 3 && <ClassManager />}
           {activeTab === 4 && <FileUploadInterface />}
-          {activeTab === 5 && <SchedulerCLI />}
+          {activeTab === 5 && <ScheduleExport schedule={schedule} />}
+          {activeTab === 6 && <SchedulerCLI />}
         </Box>
       </Box>
       

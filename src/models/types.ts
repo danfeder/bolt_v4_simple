@@ -72,6 +72,7 @@ export interface Schedule {
   fitness?: number;               // Optional fitness score
   hardConstraintViolations?: number; // Number of hard constraint violations
   softConstraintSatisfaction?: number; // Measure of soft constraint satisfaction
+  startDate?: Date;               // Optional start date for the schedule
 }
 
 // Constraint type (hard or soft)

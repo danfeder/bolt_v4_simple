@@ -160,7 +160,7 @@ Build a lean, user-friendly scheduling tool that:
 - **Task 5.4:** Implement export functionality for class data (CSV/JSON). *(Completed)*
 
 ### Phase 6: Schedule Export and Persistence
-- **Task 6.1:** Implement CSV export for the final schedule.
+- **Task 6.1:** Implement CSV export for the final schedule. *(Completed)*
   - Format: Calendar-like view with Date, Period, and Class columns.
 - **Task 6.2:** (Optional) Add persistence for final rotations for future reference.
 

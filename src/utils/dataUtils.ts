@@ -108,6 +108,108 @@ export const dataUtils = {
   },
 
   /**
+   * Export schedule to Calendar-like CSV format with actual dates
+   * @param schedule Schedule to export
+   * @param classes Classes for name lookup
+   * @param startDate The starting date for the rotation (defaults to next Monday if not provided)
+   * @returns CSV string
+   */
+  exportScheduleToCalendarCSV(schedule: Schedule, classes: Class[], startDate?: Date): string {
+    if (!schedule || !schedule.assignments || schedule.assignments.length === 0) {
+      return 'No schedule data to export';
+    }
+
+    // If no start date is provided, default to next Monday
+    const actualStartDate = startDate || this.getNextMonday();
+    
+    // Group assignments by day
+    const byDay = schedule.assignments.reduce((acc, assignment) => {
+      const { day } = assignment.timeSlot;
+      if (!acc[day]) acc[day] = [];
+      acc[day].push(assignment);
+      return acc;
+    }, {} as Record<Day, Assignment[]>);
+    
+    // CSV header
+    let csv = 'Date,Day,Period,Class Name\n';
+    
+    // Calculate dates for the week
+    const dayToDateMap = this.calculateDatesForWeek(actualStartDate);
+    
+    // Add rows
+    for (const day of Object.values(Day)) {
+      if (!byDay[day] || byDay[day].length === 0) continue;
+      
+      // Get the date for this day
+      const dateForDay = dayToDateMap[day];
+      const formattedDate = dateForDay.toISOString().split('T')[0]; // YYYY-MM-DD
+      
+      // Sort by period
+      const dayAssignments = [...(byDay[day] || [])];
+      dayAssignments.sort((a, b) => a.timeSlot.period - b.timeSlot.period);
+      
+      // Add each assignment
+      for (const assignment of dayAssignments) {
+        const classId = assignment.classId;
+        const period = assignment.timeSlot.period;
+        const classObj = classes.find(c => c.id === classId);
+        const className = classObj ? classObj.name : 'Unknown class';
+        
+        csv += `${formattedDate},${day},${period},${className}\n`;
+      }
+    }
+    
+    return csv;
+  },
+
+  /**
+   * Get the next Monday from today
+   * @returns Date object representing next Monday
+   */
+  getNextMonday(): Date {
+    const today = new Date();
+    const day = today.getDay(); // 0 is Sunday, 1 is Monday, etc.
+    
+    // Calculate days until next Monday (if today is Monday, we get next Monday)
+    const daysUntilMonday = day === 1 ? 7 : (8 - day) % 7;
+    
+    // Create new date by adding days
+    const nextMonday = new Date(today);
+    nextMonday.setDate(today.getDate() + daysUntilMonday);
+    
+    // Reset time to beginning of day
+    nextMonday.setHours(0, 0, 0, 0);
+    
+    return nextMonday;
+  },
+
+  /**
+   * Calculate dates for each day of the week starting from a given date
+   * @param startDate Starting date (should be a Monday)
+   * @returns Map of Day to Date objects
+   */
+  calculateDatesForWeek(startDate: Date): Record<Day, Date> {
+    const result: Record<Day, Date> = {} as Record<Day, Date>;
+    const days = [Day.MONDAY, Day.TUESDAY, Day.WEDNESDAY, Day.THURSDAY, Day.FRIDAY];
+    
+    // Copy the start date to avoid modifying the original
+    const currentDate = new Date(startDate);
+    
+    // For each day, calculate the corresponding date
+    for (let i = 0; i < days.length; i++) {
+      if (i > 0) {
+        // Move to next day
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+      
+      // Store the date for this day
+      result[days[i]] = new Date(currentDate);
+    }
+    
+    return result;
+  },
+
+  /**
    * Parse a CSV file containing class data
    * Expected format: Class,Monday,Tuesday,Wednesday,Thursday,Friday
    * Where each day column contains comma-separated list of period numbers that are conflicts

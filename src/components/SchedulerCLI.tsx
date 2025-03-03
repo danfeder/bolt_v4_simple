@@ -148,7 +148,7 @@ const SchedulerCLI: React.FC = () => {
       '- validate - Validate the current schedule',
       '- save [classes|schedule|all] - Save classes or schedule to local storage',
       '- load - Load saved classes and schedule from local storage',
-      '- export [csv|json] - Export the current schedule or classes to CSV or JSON',
+      '- export [csv|json|calendar] - Export the current schedule or classes to CSV or JSON',
       '- import - Import classes from a CSV file',
     ]);
   };
@@ -401,8 +401,8 @@ const SchedulerCLI: React.FC = () => {
   
   // Export command
   const handleExport = (args: string[]) => {
-    if (args.length < 1) {
-      setOutput(prev => [...prev, 'Usage: export [csv|json] [classes|schedule]']);
+    if (args.length === 0) {
+      setOutput(prev => [...prev, 'Usage: export [csv|json|calendar] [classes|schedule]']);
       return;
     }
     
@@ -442,6 +442,24 @@ const SchedulerCLI: React.FC = () => {
         }
         break;
       
+      case 'calendar':
+        if (target === 'schedule') {
+          if (!schedule) {
+            setOutput(prev => [...prev, 'No schedule has been generated yet. Use "generate" to create a schedule.']);
+            return;
+          }
+          
+          // Ask for the start date if it's not already set in the schedule
+          const startDate = schedule.startDate || dataUtils.getNextMonday();
+          
+          const calendarCSV = dataUtils.exportScheduleToCalendarCSV(schedule, schedulerAPI.getClasses(), startDate);
+          dataUtils.downloadData(calendarCSV, 'schedule_calendar.csv', 'text/csv');
+          setOutput(prev => [...prev, 'Schedule exported to calendar CSV file.']);
+        } else {
+          setOutput(prev => [...prev, 'Calendar export is only available for schedules, not classes.']);
+        }
+        break;
+        
       case 'json':
         if (target === 'schedule') {
           if (!schedule) {
@@ -469,7 +487,7 @@ const SchedulerCLI: React.FC = () => {
         break;
       
       default:
-        setOutput(prev => [...prev, `Unknown export format: ${format}. Valid options are "csv" or "json".`]);
+        setOutput(prev => [...prev, `Unknown export format: ${format}. Valid options are "csv", "json", or "calendar".`]);
     }
   };
   

@@ -170,14 +170,30 @@ export class SchedulerAPI {
 
   /**
    * Generates a schedule using the current classes and configuration
+   * @param startDate Optional start date for the schedule (defaults to the next Monday)
    * @returns A Schedule object
    */
-  generateSchedule(): Schedule {
+  generateSchedule(startDate?: Date): Schedule {
     if (this.classes.length === 0) {
       throw new Error('No classes to schedule');
     }
     
     const generatedSchedule = this.scheduler.generateSchedule();
+    
+    // Add a startDate to the schedule if one is provided
+    if (startDate) {
+      generatedSchedule.startDate = startDate;
+    } else {
+      // Use the rotation start date from constraints if available
+      const constraints = this.scheduler.getConstraints();
+      if (constraints.hard.rotationStartDate) {
+        generatedSchedule.startDate = constraints.hard.rotationStartDate;
+      } else {
+        // Default to next Monday
+        generatedSchedule.startDate = this.getNextMonday();
+      }
+    }
+    
     this.currentSchedule = generatedSchedule;
     
     // Persist to storage if not in test environment
@@ -186,6 +202,27 @@ export class SchedulerAPI {
     }
     
     return generatedSchedule;
+  }
+  
+  /**
+   * Get the next Monday from today
+   * @returns Date object representing next Monday
+   */
+  getNextMonday(): Date {
+    const today = new Date();
+    const day = today.getDay(); // 0 is Sunday, 1 is Monday, etc.
+    
+    // Calculate days until next Monday (if today is Monday, we get next Monday)
+    const daysUntilMonday = day === 1 ? 7 : (8 - day) % 7;
+    
+    // Create new date by adding days
+    const nextMonday = new Date(today);
+    nextMonday.setDate(today.getDate() + daysUntilMonday);
+    
+    // Reset time to beginning of day
+    nextMonday.setHours(0, 0, 0, 0);
+    
+    return nextMonday;
   }
 
   /**
