@@ -1,0 +1,28 @@
+.schedule-cell {
+  transition: all 0.2s ease-in-out;
+}
+
+.schedule-cell:hover {
+  transform: scale(1.02);
+  z-index: 1;
+}
+
+.period-label {
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .day-header {
+    font-size: 0.8rem;
+  }
+  
+  .class-name {
+    font-size: 0.7rem;
+  }
+  
+  .class-id {
+    font-size: 0.6rem;
+  }
+}

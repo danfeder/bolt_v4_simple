@@ -142,7 +142,7 @@ Build a lean, user-friendly scheduling tool that:
 - **Task 3.1:** Develop the constraint input form. *(Completed)*
   - Include fields for hard constraints (prep schedules, personal conflicts, rotation dates, limits) and soft constraints (preferences).
 - **Task 3.2:** Implement save/load functionality for constraint sets. *(Completed)*
-- **Task 3.3:** Create the weekly schedule dashboard view.
+- **Task 3.3:** Create the weekly schedule dashboard view. *(Completed)*
   - Display a calendar view for Monday–Friday, 8 periods/day, with navigation controls.
 
 ### Phase 4: Integrate Manual Adjustment Features

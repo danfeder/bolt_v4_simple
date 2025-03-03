@@ -3,19 +3,27 @@ import { Container, Typography, Box, Tabs, Tab } from '@mui/material';
 import SchedulerCLI from './components/SchedulerCLI';
 import ConstraintInputForm from './components/ConstraintInputForm';
 import ConstraintSetManager from './components/ConstraintSetManager';
-import { SchedulingConstraints } from './models/types';
+import WeeklyScheduleDashboard from './components/WeeklyScheduleDashboard';
+import { SchedulingConstraints, Schedule } from './models/types';
 import { dataUtils } from './utils/dataUtils';
 
 function App() {
   const [activeTab, setActiveTab] = useState(0);
   const [constraints, setConstraints] = useState<SchedulingConstraints | null>(null);
+  const [schedule, setSchedule] = useState<Schedule | null>(null);
 
-  // Load saved constraints on mount
+  // Load saved constraints and schedule on mount
   useEffect(() => {
     const savedConstraints = dataUtils.loadConstraints();
     if (savedConstraints) {
       setConstraints(savedConstraints);
       console.log('Loaded saved constraints from local storage');
+    }
+
+    const savedSchedule = dataUtils.loadSchedule();
+    if (savedSchedule) {
+      setSchedule(savedSchedule);
+      console.log('Loaded saved schedule from local storage');
     }
   }, []);
 
@@ -28,6 +36,13 @@ function App() {
     dataUtils.saveConstraints(newConstraints);
     setConstraints(newConstraints);
     console.log('Constraints saved to local storage');
+  };
+
+  const handleScheduleChange = (newSchedule: Schedule) => {
+    // Save the schedule
+    dataUtils.saveSchedule(newSchedule);
+    setSchedule(newSchedule);
+    console.log('Schedule saved to local storage');
   };
 
   return (
@@ -44,6 +59,7 @@ function App() {
           <Tabs value={activeTab} onChange={handleTabChange} centered>
             <Tab label="Constraints" />
             <Tab label="Saved Sets" />
+            <Tab label="Schedule" />
             <Tab label="CLI" />
           </Tabs>
         </Box>
@@ -67,7 +83,13 @@ function App() {
               }}
             />
           }
-          {activeTab === 2 && <SchedulerCLI />}
+          {activeTab === 2 && 
+            <WeeklyScheduleDashboard 
+              schedule={schedule || undefined} 
+              onScheduleChange={handleScheduleChange}
+            />
+          }
+          {activeTab === 3 && <SchedulerCLI />}
         </Box>
       </Box>
     </Container>
