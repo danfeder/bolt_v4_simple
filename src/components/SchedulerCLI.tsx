@@ -99,6 +99,10 @@ const SchedulerCLI: React.FC = () => {
         case 'import':
           handleImport();
           break;
+        case 'rotation':
+        case 'rotations':
+          handleRotation(args);
+          break;
         default:
           setOutput(prev => [...prev, `Unknown command: ${cmd}. Type "help" for a list of commands.`]);
       }
@@ -150,6 +154,11 @@ const SchedulerCLI: React.FC = () => {
       '- load - Load saved classes and schedule from local storage',
       '- export [csv|json|calendar] - Export the current schedule or classes to CSV or JSON',
       '- import - Import classes from a CSV file',
+      '- rotation list - List saved schedule rotations',
+      '- rotation save <name> - Save current schedule to rotation history',
+      '- rotation load <id> - Load a saved rotation',
+      '- rotation view <id> - View details of a saved rotation',
+      '- rotation delete <id> - Delete a saved rotation',
     ]);
   };
   
@@ -565,6 +574,166 @@ const SchedulerCLI: React.FC = () => {
     
     // Trigger the file selection dialog
     fileInput.click();
+  };
+
+  const handleRotation = (args: string[]) => {
+    if (args.length < 1) {
+      setOutput(prev => [...prev, 'Usage: rotation [list|save|load|view|delete]']);
+      return;
+    }
+    
+    const subCommand = args[0].toLowerCase();
+    
+    switch (subCommand) {
+      case 'list':
+        // List saved schedule rotations
+        const rotations = dataUtils.loadRotations();
+        if (rotations && rotations.length > 0) {
+          setOutput(prev => [
+            ...prev,
+            `Found ${rotations.length} saved rotations:`,
+            'ID | Name | Created | Classes',
+            '--------------------------------',
+            ...rotations.map((r) => {
+              const dateStr = new Date(r.createdAt).toLocaleDateString();
+              return `${r.id.substring(0, 8)}... | ${r.name} | ${dateStr} | ${r.classCount || r.schedule.assignments.length}`;
+            })
+          ]);
+        } else {
+          setOutput(prev => [...prev, 'No saved rotations found.']);
+        }
+        break;
+      
+      case 'save':
+        if (args.length < 2) {
+          setOutput(prev => [...prev, 'Usage: rotation save <name> [notes]']);
+          return;
+        }
+        
+        const name = args[1];
+        const notes = args.length > 2 ? args.slice(2).join(' ') : '';
+        
+        if (!schedule) {
+          setOutput(prev => [...prev, 'No schedule has been generated yet. Use "generate" to create a schedule.']);
+          return;
+        }
+        
+        const savedRotation = dataUtils.saveScheduleToRotationHistory(schedule, name, notes);
+        setOutput(prev => [
+          ...prev, 
+          `Saved rotation "${name}" with ID ${savedRotation.id.substring(0, 8)}...`,
+          notes ? `Notes: ${notes}` : ''
+        ]);
+        break;
+      
+      case 'load':
+        if (args.length < 2) {
+          setOutput(prev => [...prev, 'Usage: rotation load <id>']);
+          return;
+        }
+        
+        const loadId = args[1];
+        const loadedRotation = dataUtils.loadRotation(loadId);
+        
+        if (loadedRotation) {
+          // Make a deep copy to avoid reference issues
+          const loadedSchedule = JSON.parse(JSON.stringify(loadedRotation.schedule));
+          setSchedule(loadedSchedule);
+          dataUtils.saveSchedule(loadedSchedule);
+          
+          setOutput(prev => [
+            ...prev, 
+            `Loaded rotation "${loadedRotation.name}" from ${new Date(loadedRotation.createdAt).toLocaleDateString()}`,
+            `Schedule has ${loadedSchedule.assignments.length} assignments.`
+          ]);
+        } else {
+          setOutput(prev => [...prev, `No rotation found with ID ${loadId}`]);
+        }
+        break;
+      
+      case 'view':
+        if (args.length < 2) {
+          setOutput(prev => [...prev, 'Usage: rotation view <id>']);
+          return;
+        }
+        
+        const viewId = args[1];
+        const viewRotation = dataUtils.loadRotation(viewId);
+        
+        if (viewRotation) {
+          const assignmentsByDay = viewRotation.schedule.assignments.reduce((acc, a) => {
+            if (!acc[a.timeSlot.day]) acc[a.timeSlot.day] = [];
+            acc[a.timeSlot.day].push(a);
+            return acc;
+          }, {} as Record<string, any[]>);
+          
+          const dayOutput = Object.entries(assignmentsByDay).map(([day, assignments]) => {
+            return [
+              `${day}:`,
+              ...assignments
+                .sort((a, b) => a.timeSlot.period - b.timeSlot.period)
+                .map(a => `  Period ${a.timeSlot.period}: Class ID ${a.classId}`)
+            ];
+          }).flat();
+          
+          setOutput(prev => [
+            ...prev,
+            `Rotation: ${viewRotation.name}`,
+            `ID: ${viewRotation.id}`,
+            `Created: ${new Date(viewRotation.createdAt).toLocaleString()}`,
+            viewRotation.notes ? `Notes: ${viewRotation.notes}` : '',
+            `Assignments:`,
+            ...dayOutput
+          ]);
+        } else {
+          setOutput(prev => [...prev, `No rotation found with ID ${viewId}`]);
+        }
+        break;
+      
+      case 'delete':
+        if (args.length < 2) {
+          setOutput(prev => [...prev, 'Usage: rotation delete <id>']);
+          return;
+        }
+        
+        const deleteId = args[1];
+        
+        if (deleteId.toLowerCase() === 'all') {
+          if (args[2]?.toLowerCase() === 'confirm') {
+            // Delete all rotations
+            const allRotations = dataUtils.loadRotations();
+            let count = 0;
+            
+            for (const r of allRotations) {
+              if (dataUtils.deleteRotation(r.id)) {
+                count++;
+              }
+            }
+            
+            setOutput(prev => [...prev, `Deleted all ${count} rotations.`]);
+          } else {
+            setOutput(prev => [
+              ...prev, 
+              'This will delete ALL saved rotations.', 
+              'To confirm, type: rotation delete all confirm'
+            ]);
+          }
+          return;
+        }
+        
+        const rotationToDelete = dataUtils.loadRotation(deleteId);
+        
+        if (rotationToDelete) {
+          dataUtils.deleteRotation(deleteId);
+          setOutput(prev => [...prev, `Deleted rotation "${rotationToDelete.name}" with ID ${deleteId}`]);
+        } else {
+          setOutput(prev => [...prev, `No rotation found with ID ${deleteId}`]);
+        }
+        break;
+      
+      default:
+        setOutput(prev => [...prev, `Unknown rotation subcommand: ${subCommand}. Valid options are "list", "save", "load", "view", or "delete".`]);
+    }
   };
 
   return (

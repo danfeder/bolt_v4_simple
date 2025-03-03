@@ -7,13 +7,15 @@ import WeeklyScheduleDashboard from './components/WeeklyScheduleDashboard';
 import FileUploadInterface from './components/FileUploadInterface';
 import ClassManager from './components/ClassManager';
 import ScheduleExport from './components/ScheduleExport';
-import { SchedulingConstraints, Schedule } from './models/types';
+import RotationHistory from './components/RotationHistory';
+import { SchedulingConstraints, Schedule, Class } from './models/types';
 import { dataUtils } from './utils/dataUtils';
 
 function App() {
   const [activeTab, setActiveTab] = useState(0);
   const [constraints, setConstraints] = useState<SchedulingConstraints | null>(null);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
+  const [classes, setClasses] = useState<Class[]>([]);
   const [notification, setNotification] = useState<{
     open: boolean;
     message: string;
@@ -36,6 +38,12 @@ function App() {
     if (savedSchedule) {
       setSchedule(savedSchedule);
       console.log('Loaded saved schedule from local storage');
+    }
+    
+    const savedClasses = dataUtils.loadClasses();
+    if (savedClasses) {
+      setClasses(savedClasses);
+      console.log('Loaded saved classes from local storage');
     }
   }, []);
 
@@ -93,6 +101,7 @@ function App() {
             <Tab label="Class Manager" />
             <Tab label="File Management" />
             <Tab label="Export" />
+            <Tab label="History" />
             <Tab label="CLI" />
           </Tabs>
         </Box>
@@ -126,7 +135,20 @@ function App() {
           {activeTab === 3 && <ClassManager />}
           {activeTab === 4 && <FileUploadInterface />}
           {activeTab === 5 && <ScheduleExport schedule={schedule} />}
-          {activeTab === 6 && <SchedulerCLI />}
+          {activeTab === 6 && 
+            <RotationHistory 
+              classes={classes}
+              onLoadRotation={(rotation) => {
+                dataUtils.saveSchedule(rotation.schedule);
+                setSchedule(rotation.schedule);
+                console.log('Schedule loaded from rotation history');
+                // Switch to the schedule tab
+                setActiveTab(2);
+                showNotification('Rotation loaded successfully', 'success');
+              }}
+            />
+          }
+          {activeTab === 7 && <SchedulerCLI />}
         </Box>
       </Box>
       

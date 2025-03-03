@@ -12,15 +12,38 @@ export interface ConstraintSetMetadata {
 }
 
 /**
+ * Interface for schedule rotation history entry
+ */
+export interface ScheduleRotation {
+  id: string;
+  name: string;
+  schedule: Schedule;
+  createdAt: Date;
+  notes: string;
+  classCount: number;
+}
+
+/**
  * Utility functions for loading and saving data for the scheduler
  */
 export const dataUtils = {
+  // Local storage keys
+  SCHEDULE_KEY: 'gym-scheduler-schedule',
+  CLASSES_KEY: 'gym-scheduler-classes',
+  CONSTRAINTS_KEY: 'gym-scheduler-constraints',
+  CONSTRAINT_SETS_KEY: 'gym-scheduler-constraint-sets-meta',
+  CONSTRAINT_SET_PREFIX: 'gym-scheduler-constraint-set-',
+  ROTATION_HISTORY_KEY: 'gym-scheduler-rotation-history',
+  
+  // Maximum number of rotations to keep in history
+  MAX_ROTATION_HISTORY: 20,
+
   /**
    * Save classes to local storage
    * @param classes Classes to save
    */
   saveClasses(classes: Class[]): void {
-    localStorage.setItem('scheduler_classes', JSON.stringify(classes));
+    localStorage.setItem(this.CLASSES_KEY, JSON.stringify(classes));
   },
 
   /**
@@ -28,7 +51,7 @@ export const dataUtils = {
    * @returns Array of classes, or empty array if none found
    */
   loadClasses(): Class[] {
-    const data = localStorage.getItem('scheduler_classes');
+    const data = localStorage.getItem(this.CLASSES_KEY);
     if (!data) return [];
     
     try {
@@ -44,7 +67,7 @@ export const dataUtils = {
    * @param schedule Schedule to save
    */
   saveSchedule(schedule: Schedule): void {
-    localStorage.setItem('scheduler_schedule', JSON.stringify(schedule));
+    localStorage.setItem(this.SCHEDULE_KEY, JSON.stringify(schedule));
   },
 
   /**
@@ -52,7 +75,7 @@ export const dataUtils = {
    * @returns Schedule, or null if none found
    */
   loadSchedule(): Schedule | null {
-    const data = localStorage.getItem('scheduler_schedule');
+    const data = localStorage.getItem(this.SCHEDULE_KEY);
     if (!data) return null;
     
     try {
@@ -210,6 +233,149 @@ export const dataUtils = {
   },
 
   /**
+   * Generate a unique ID for schedule rotations
+   * @returns A unique string ID
+   */
+  generateUniqueId(): string {
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+  },
+
+  /**
+   * Save a schedule to the rotation history
+   * @param schedule The schedule to save
+   * @param name Name for this rotation
+   * @param notes Optional notes about this rotation
+   * @returns The created rotation entry
+   */
+  saveScheduleToRotationHistory(
+    schedule: Schedule, 
+    name: string, 
+    notes?: string
+  ): ScheduleRotation {
+    // Get existing rotation history
+    const rotations = this.getRotationHistory();
+    
+    // Create new rotation entry
+    const newRotation: ScheduleRotation = {
+      id: this.generateUniqueId(),
+      name,
+      schedule: JSON.parse(JSON.stringify(schedule)), // Deep copy the schedule
+      createdAt: new Date(),
+      notes: notes || '',
+      classCount: schedule.assignments.length
+    };
+    
+    // Add to history
+    rotations.push(newRotation);
+    
+    // Ensure we don't exceed the maximum number of rotations
+    if (rotations.length > this.MAX_ROTATION_HISTORY) {
+      // Remove oldest rotations
+      rotations.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      rotations.splice(this.MAX_ROTATION_HISTORY);
+    }
+    
+    // Save updated history
+    localStorage.setItem(this.ROTATION_HISTORY_KEY, JSON.stringify(rotations));
+    
+    return newRotation;
+  },
+  
+  /**
+   * Get all saved schedule rotations
+   * @returns Array of rotation history entries
+   */
+  getRotationHistory(): ScheduleRotation[] {
+    const rotationsJson = localStorage.getItem(this.ROTATION_HISTORY_KEY);
+    if (!rotationsJson) return [];
+    
+    try {
+      const rotations = JSON.parse(rotationsJson) as ScheduleRotation[];
+      
+      // Ensure dates are properly parsed
+      return rotations.map(rotation => ({
+        ...rotation,
+        createdAt: new Date(rotation.createdAt),
+        schedule: {
+          ...rotation.schedule,
+          startDate: rotation.schedule.startDate ? new Date(rotation.schedule.startDate) : undefined
+        }
+      }));
+    } catch (error) {
+      console.error('Error parsing rotation history:', error);
+      return [];
+    }
+  },
+  
+  /**
+   * Alias for getRotationHistory for backward compatibility
+   */
+  loadRotations(): ScheduleRotation[] {
+    return this.getRotationHistory();
+  },
+  
+  /**
+   * Get a specific schedule rotation by ID
+   * @param id The rotation ID to find
+   * @returns The rotation if found, or undefined
+   */
+  getRotationById(id: string): ScheduleRotation | undefined {
+    const rotations = this.getRotationHistory();
+    return rotations.find(rotation => rotation.id === id);
+  },
+  
+  /**
+   * Alias for getRotationById for backward compatibility
+   */
+  loadRotation(id: string): ScheduleRotation | undefined {
+    return this.getRotationById(id);
+  },
+  
+  /**
+   * Delete a specific rotation from history
+   * @param id The rotation ID to delete
+   * @returns true if successful, false if not found
+   */
+  deleteRotation(id: string): boolean {
+    const rotations = this.getRotationHistory();
+    const initialLength = rotations.length;
+    
+    const filteredRotations = rotations.filter(rotation => rotation.id !== id);
+    
+    if (filteredRotations.length !== initialLength) {
+      localStorage.setItem(this.ROTATION_HISTORY_KEY, JSON.stringify(filteredRotations));
+      return true;
+    }
+    
+    return false;
+  },
+  
+  /**
+   * Update a rotation's metadata (name, notes)
+   * @param id The rotation ID to update
+   * @param updates Object containing the fields to update
+   * @returns The updated rotation if successful, undefined if not found
+   */
+  updateRotation(
+    id: string, 
+    updates: { name?: string; notes?: string }
+  ): ScheduleRotation | undefined {
+    const rotations = this.getRotationHistory();
+    const rotationIndex = rotations.findIndex(rotation => rotation.id === id);
+    
+    if (rotationIndex === -1) return undefined;
+    
+    // Apply updates
+    if (updates.name) rotations[rotationIndex].name = updates.name;
+    if (updates.notes !== undefined) rotations[rotationIndex].notes = updates.notes;
+    
+    // Save changes
+    localStorage.setItem(this.ROTATION_HISTORY_KEY, JSON.stringify(rotations));
+    
+    return rotations[rotationIndex];
+  },
+
+  /**
    * Parse a CSV file containing class data
    * Expected format: Class,Monday,Tuesday,Wednesday,Thursday,Friday
    * Where each day column contains comma-separated list of period numbers that are conflicts
@@ -331,7 +497,7 @@ export const dataUtils = {
    */
   saveConstraints(constraints: SchedulingConstraints): void {
     try {
-      localStorage.setItem('gym-scheduler-constraints', JSON.stringify(constraints));
+      localStorage.setItem(this.CONSTRAINTS_KEY, JSON.stringify(constraints));
     } catch (error) {
       console.error('Failed to save constraints to local storage:', error);
     }
@@ -343,7 +509,7 @@ export const dataUtils = {
    */
   loadConstraints(): SchedulingConstraints | null {
     try {
-      const constraintsJson = localStorage.getItem('gym-scheduler-constraints');
+      const constraintsJson = localStorage.getItem(this.CONSTRAINTS_KEY);
       if (constraintsJson) {
         const constraints = JSON.parse(constraintsJson) as SchedulingConstraints;
         
@@ -441,10 +607,10 @@ export const dataUtils = {
       }
       
       // Save metadata
-      localStorage.setItem('gym-scheduler-constraint-sets-meta', JSON.stringify(updatedMetadataList));
+      localStorage.setItem(this.CONSTRAINT_SETS_KEY, JSON.stringify(updatedMetadataList));
       
       // Save actual constraints
-      localStorage.setItem(`gym-scheduler-constraint-set-${id}`, JSON.stringify(constraints));
+      localStorage.setItem(`${this.CONSTRAINT_SET_PREFIX}${id}`, JSON.stringify(constraints));
       
       return id;
     } catch (error) {
@@ -459,7 +625,7 @@ export const dataUtils = {
    */
   getConstraintSetsList(): ConstraintSetMetadata[] {
     try {
-      const json = localStorage.getItem('gym-scheduler-constraint-sets-meta');
+      const json = localStorage.getItem(this.CONSTRAINT_SETS_KEY);
       if (json) {
         return JSON.parse(json) as ConstraintSetMetadata[];
       }
@@ -476,7 +642,7 @@ export const dataUtils = {
    */
   loadConstraintSetById(id: string): SchedulingConstraints | null {
     try {
-      const json = localStorage.getItem(`gym-scheduler-constraint-set-${id}`);
+      const json = localStorage.getItem(`${this.CONSTRAINT_SET_PREFIX}${id}`);
       if (json) {
         const constraints = JSON.parse(json) as SchedulingConstraints;
         
@@ -515,10 +681,10 @@ export const dataUtils = {
       }
       
       // Update metadata
-      localStorage.setItem('gym-scheduler-constraint-sets-meta', JSON.stringify(updatedList));
+      localStorage.setItem(this.CONSTRAINT_SETS_KEY, JSON.stringify(updatedList));
       
       // Remove the actual constraints
-      localStorage.removeItem(`gym-scheduler-constraint-set-${id}`);
+      localStorage.removeItem(`${this.CONSTRAINT_SET_PREFIX}${id}`);
       
       return true;
     } catch (error) {

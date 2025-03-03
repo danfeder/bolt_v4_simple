@@ -75,6 +75,16 @@ export interface Schedule {
   startDate?: Date;               // Optional start date for the schedule
 }
 
+// Schedule rotation history entry
+export interface ScheduleRotation {
+  id: string;                   // Unique identifier for the rotation
+  name: string;                 // User-defined name for this rotation
+  schedule: Schedule;           // The actual schedule
+  createdAt: Date;              // When this rotation was created
+  notes?: string;               // Optional notes about this rotation
+  classCount?: number;          // Number of classes in this rotation (for quick reference)
+}
+
 // Constraint type (hard or soft)
 export enum ConstraintType {
   HARD = 'HARD',

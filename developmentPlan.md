@@ -162,7 +162,14 @@ Build a lean, user-friendly scheduling tool that:
 ### Phase 6: Schedule Export and Persistence
 - **Task 6.1:** Implement CSV export for the final schedule. *(Completed)*
   - Format: Calendar-like view with Date, Period, and Class columns.
-- **Task 6.2:** (Optional) Add persistence for final rotations for future reference.
+- **Task 6.2:** Add persistence for final rotations for future reference. *(Completed)*
+  - Storage: Used browser's localStorage for maintaining rotation history
+  - UI: Implemented RotationHistory component with preview capability 
+  - Notes: Added ability to include and edit notes for each saved rotation
+  - Integration: Kept rotation history separate from the current schedule
+  - Management: Added ability to save, load, view, edit, and delete rotations
+  - Limits: Set maximum capacity to prevent excessive storage use
+  - Interface options: Added both GUI tab and CLI commands for rotation management
 
 ### Phase 7: Testing and Validation
 - **Task 7.1:** Write unit tests for the scheduling engine.
