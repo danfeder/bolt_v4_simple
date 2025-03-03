@@ -1,0 +1,69 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Build outputs
+dist/
+build/
+out/
+lib/
+
+# Coverage directory
+coverage/
+
+# nyc test coverage
+.nyc_output/
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# IDE - WebStorm/IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Debug logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Environment variables
+.env
+.env.test
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Mac OS
+.DS_Store
+
+# Vim
+*.swp
+*.swo
+
+# Project specific
+.cache/
+temp/
+tmp/
+
+# Vitest
+__vitest__/
+*.vitest-temp/
