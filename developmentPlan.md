@@ -172,14 +172,22 @@ Build a lean, user-friendly scheduling tool that:
   - Interface options: Added both GUI tab and CLI commands for rotation management
 
 ### Phase 7: Testing and Validation
-- **Task 7.1:** ✅ Write unit tests for the scheduling engine.
+- **Task 7.1:** Write unit tests for the scheduling engine. *(Completed)*
   - Focus on the fitness function, genetic operators, and population management.
   - Implemented comprehensive tests for crossover and mutation methods in geneticOperators.ts
   - Added deterministic testing approach by properly mocking Math.random
   - Fixed issues with test expectations to match actual implementation behavior
   - Added tests for schedule rotation persistence functionality
   - Achieved 100% passing tests across all components
-- **Task 7.2:** Develop integration tests for the API endpoints (within the frontend app).
+- **Task 7.2:** Develop integration tests for the API endpoints (within the frontend app). *(Completed)*
+  - Created integration tests for the SchedulerAPI interacting with UI components
+  - Implemented component mocks to simulate ClassManager, SchedulerCLI, and WeeklyScheduleDashboard behavior
+  - Added tests for key API interactions including:
+    - Class management (add, get classes)
+    - Schedule operations (generate, lock/unlock assignments)
+    - Rotation history functionality (save, retrieve)
+  - Tested component-to-API interactions to ensure proper integration
+  - All tests are passing, verifying proper integration between frontend and API
 - **Task 7.3:** Perform user testing of the GUI (constraint input, schedule display, manual adjustments).
 - **Task 7.4:** Validate file upload/edit functionality and CSV export accuracy.
 
