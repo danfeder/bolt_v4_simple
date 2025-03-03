@@ -146,7 +146,7 @@ Build a lean, user-friendly scheduling tool that:
   - Display a calendar view for Monday–Friday, 8 periods/day, with navigation controls.
 
 ### Phase 4: Integrate Manual Adjustment Features
-- **Task 4.1:** Develop the drag-and-drop interface for schedule adjustments.
+- **Task 4.1:** Develop the drag-and-drop interface for schedule adjustments. *(Completed)*
   - Visual indicators for valid drop zones based on constraints.
   - Temporary drop zone for rescheduling classes across multiple weeks.
 - **Task 4.2:** Ensure manual adjustments update the underlying schedule data.

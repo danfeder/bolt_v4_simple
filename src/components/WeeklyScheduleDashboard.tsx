@@ -1,307 +1,383 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Box, 
-  Paper, 
   Typography, 
+  Paper, 
   Grid, 
-  IconButton, 
-  Tooltip, 
-  Chip,
-  Card,
-  CardContent,
-  useTheme,
-  Button
+  Button, 
+  Snackbar, 
+  Alert,
+  CircularProgress,
+  Divider
 } from '@mui/material';
-import { 
-  NavigateBefore, 
-  NavigateNext,
-  Today,
-  Info
-} from '@mui/icons-material';
-import { Day, Period, Schedule, Class, Assignment } from '../models/types';
-import { format, addWeeks, subWeeks, isEqual, startOfWeek, addDays } from 'date-fns';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import { TouchBackend } from 'react-dnd-touch-backend';
+import { Schedule, TimeSlot, Day, Period, Class } from '../models/types';
 import { schedulerApi } from '../engine/schedulerAPI';
-import { dataUtils } from '../utils/dataUtils';
+import { DAYS_OF_WEEK, PERIODS_PER_DAY } from '../models/constants';
+import DraggableClassItem, { DragItem } from './DraggableClassItem';
+import DroppableCell from './DroppableCell';
+import TemporaryDropZone from './TemporaryDropZone';
+import { validateClassMove, moveClassInSchedule } from '../utils/dragDropUtils';
+import './WeeklyScheduleDashboard.css';
+
+// Detect if the device has touch support
+const isTouchDevice = () => {
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+};
 
 interface WeeklyScheduleDashboardProps {
   schedule?: Schedule;
   onScheduleChange?: (schedule: Schedule) => void;
 }
 
-const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
-  schedule: propSchedule,
-  onScheduleChange
+const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({ 
+  schedule,
+  onScheduleChange 
 }) => {
-  const theme = useTheme();
-  const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [schedule, setSchedule] = useState<Schedule | null>(propSchedule || null);
+  const [currentSchedule, setCurrentSchedule] = useState<Schedule | null>(null);
   const [classes, setClasses] = useState<Class[]>([]);
-  const [weekDates, setWeekDates] = useState<Date[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info' | 'warning';
+  }>({
+    open: false,
+    message: '',
+    severity: 'info'
+  });
+  
+  // State for the temporary storage zone
+  const [tempStorage, setTempStorage] = useState<{
+    classId: string;
+    classObj: Class;
+    originalTimeSlot: {
+      day: string;
+      period: number;
+    };
+  }[]>([]);
 
-  // Define the periods for the schedule
-  const periods: Period[] = [1, 2, 3, 4, 5, 6, 7, 8];
-  const days = Object.values(Day);
-
-  // Calculate start of week and weekdays
+  // Load the schedule and classes
   useEffect(() => {
-    const startOfCurrentWeek = startOfWeek(currentDate, { weekStartsOn: 1 }); // Monday
-    const dates = Array(5)
-      .fill(null)
-      .map((_, index) => addDays(startOfCurrentWeek, index));
-    setWeekDates(dates);
-  }, [currentDate]);
-
-  // Load schedule and classes when component mounts
-  useEffect(() => {
-    if (propSchedule) {
-      setSchedule(propSchedule);
-    } else {
-      const savedSchedule = dataUtils.loadSchedule();
-      if (savedSchedule) {
-        setSchedule(savedSchedule);
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        // If a schedule is provided, use it
+        if (schedule) {
+          setCurrentSchedule(schedule);
+        } else {
+          // Otherwise, try to generate a new one
+          const generatedSchedule = await schedulerApi.generateSchedule();
+          setCurrentSchedule(generatedSchedule);
+        }
+        
+        // Load all classes
+        const loadedClasses = await schedulerApi.getClasses();
+        setClasses(loadedClasses);
+        
+        setError(null);
+      } catch (err) {
+        console.error('Error loading schedule data:', err);
+        setError('Failed to load schedule data. Please try again later.');
+      } finally {
+        setLoading(false);
       }
-    }
-
-    const classData = schedulerApi.getClasses();
-    if (classData.length > 0) {
-      setClasses(classData);
-    } else {
-      const savedClasses = dataUtils.loadClasses();
-      if (savedClasses && savedClasses.length > 0) {
-        setClasses(savedClasses);
-        schedulerApi.setClasses(savedClasses);
-      }
-    }
-  }, [propSchedule]);
-
-  // Navigate to previous week
-  const handlePreviousWeek = () => {
-    setCurrentDate(subWeeks(currentDate, 1));
-  };
-
-  // Navigate to next week
-  const handleNextWeek = () => {
-    setCurrentDate(addWeeks(currentDate, 1));
-  };
-
-  // Navigate to current week
-  const handleCurrentWeek = () => {
-    setCurrentDate(new Date());
-  };
-
-  // Generate a new schedule
-  const handleGenerateSchedule = () => {
-    try {
-      const newSchedule = schedulerApi.generateSchedule();
-      setSchedule(newSchedule);
-      
-      // Save the schedule to storage
-      dataUtils.saveSchedule(newSchedule);
-      
-      // Notify parent if callback provided
-      if (onScheduleChange) {
-        onScheduleChange(newSchedule);
-      }
-    } catch (error) {
-      console.error('Failed to generate schedule:', error);
-      alert(`Error: ${(error as Error).message || 'Failed to generate schedule'}`);
-    }
-  };
-
-  // Find the class assignment for a specific time slot
-  const getAssignmentForTimeSlot = (day: Day, period: Period): Assignment | undefined => {
-    if (!schedule || !schedule.assignments) return undefined;
+    };
     
-    return schedule.assignments.find(
-      assignment => assignment.timeSlot.day === day && assignment.timeSlot.period === period
+    loadData();
+  }, [schedule]);
+
+  // Handle class drop on a cell
+  const handleDropOnCell = (item: DragItem, day: Day, period: Period) => {
+    if (!currentSchedule) return;
+    
+    // Check if the drop is valid
+    const validationResult = validateClassMove(item.classId, day, period, currentSchedule, classes);
+    
+    if (!validationResult.isValid) {
+      // Show an error notification
+      showNotification(validationResult.reason || 'Invalid move', 'error');
+      return;
+    }
+    
+    // Update the schedule
+    const updatedSchedule = moveClassInSchedule(
+      currentSchedule,
+      item.classId,
+      { day, period }
     );
+    
+    setCurrentSchedule(updatedSchedule);
+    
+    // Notify parent component about the change
+    if (onScheduleChange) {
+      onScheduleChange(updatedSchedule);
+    }
+    
+    // Check if the class was in temp storage and remove it if it was
+    if (tempStorage.some(tempClass => tempClass.classId === item.classId)) {
+      setTempStorage(prev => prev.filter(tempClass => tempClass.classId !== item.classId));
+    }
+    
+    // Show success notification
+    showNotification('Class moved successfully', 'success');
   };
 
-  // Get class information by ID
+  // Handle class drop on temporary storage
+  const handleDropOnTemp = (item: DragItem) => {
+    if (!currentSchedule) return;
+    
+    // Find the class object
+    const classObj = classes.find(c => c.id === item.classId);
+    if (!classObj) {
+      showNotification('Class not found', 'error');
+      return;
+    }
+    
+    // Check if already in temp storage
+    if (tempStorage.some(tempClass => tempClass.classId === item.classId)) {
+      showNotification('Class is already in temporary storage', 'info');
+      return;
+    }
+    
+    // Update the schedule by removing the class
+    const updatedSchedule = {
+      ...currentSchedule,
+      assignments: currentSchedule.assignments.filter(
+        assignment => assignment.classId !== item.classId
+      )
+    };
+    
+    setCurrentSchedule(updatedSchedule);
+    
+    // Add to temp storage
+    setTempStorage(prev => [
+      ...prev,
+      {
+        classId: item.classId,
+        classObj,
+        originalTimeSlot: item.originalTimeSlot
+      }
+    ]);
+    
+    // Notify parent component about the change
+    if (onScheduleChange) {
+      onScheduleChange(updatedSchedule);
+    }
+    
+    showNotification('Class moved to temporary storage', 'info');
+  };
+
+  // Remove a class from temporary storage
+  const handleRemoveFromTemp = (classId: string) => {
+    setTempStorage(prev => prev.filter(tempClass => tempClass.classId !== classId));
+    showNotification('Class removed from temporary storage', 'info');
+  };
+
+  // Check if a drop target is valid
+  const isValidDropTarget = (item: DragItem, day: Day, period: Period): boolean => {
+    if (!currentSchedule) return false;
+    
+    const validationResult = validateClassMove(item.classId, day, period, currentSchedule, classes);
+    return validationResult.isValid;
+  };
+
+  // Find class assignment for a given time slot
+  const findClassForTimeSlot = (day: Day, period: Period): string | null => {
+    if (!currentSchedule) return null;
+    
+    const assignment = currentSchedule.assignments.find(
+      a => a.timeSlot.day === day && a.timeSlot.period === period
+    );
+    
+    return assignment ? assignment.classId : null;
+  };
+
+  // Find the class object for a given class ID
   const getClassById = (classId: string): Class | undefined => {
     return classes.find(c => c.id === classId);
   };
 
-  // Render a class cell
-  const renderClassCell = (day: Day, period: Period) => {
-    const assignment = getAssignmentForTimeSlot(day, period);
+  // Handle saving the current schedule
+  const handleSaveSchedule = () => {
+    if (!currentSchedule) return;
     
-    if (!assignment) {
-      return (
-        <Box 
-          sx={{ 
-            height: '100%', 
-            display: 'flex', 
-            justifyContent: 'center', 
-            alignItems: 'center',
-            bgcolor: 'background.paper',
-            borderRadius: 1,
-            p: 1
-          }}
-        >
-          <Typography variant="body2" color="text.secondary">No Class</Typography>
-        </Box>
-      );
+    try {
+      schedulerApi.saveSchedule(currentSchedule);
+      showNotification('Schedule saved successfully', 'success');
+    } catch (err) {
+      console.error('Error saving schedule:', err);
+      showNotification('Failed to save schedule', 'error');
     }
-    
-    const classObj = getClassById(assignment.classId);
-    
-    return (
-      <Card 
-        variant="outlined" 
-        sx={{ 
-          height: '100%',
-          bgcolor: theme.palette.primary.light,
-          borderColor: theme.palette.primary.main,
-        }}
-      >
-        <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
-          <Typography variant="body2" fontWeight="bold" noWrap>
-            {classObj ? classObj.name : 'Unknown Class'}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap>
-            {assignment.classId}
-          </Typography>
-        </CardContent>
-      </Card>
-    );
   };
 
+  // Show notification
+  const showNotification = (message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
+    setNotification({
+      open: true,
+      message,
+      severity
+    });
+  };
+
+  // Close notification
+  const handleCloseNotification = () => {
+    setNotification(prev => ({
+      ...prev,
+      open: false
+    }));
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Alert severity="error" sx={{ mt: 2 }}>
+        {error}
+      </Alert>
+    );
+  }
+
+  if (!currentSchedule) {
+    return (
+      <Alert severity="warning" sx={{ mt: 2 }}>
+        No schedule available. Please generate a new schedule.
+      </Alert>
+    );
+  }
+
   return (
-    <Box sx={{ p: 2 }}>
-      <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
-        {/* Header with navigation */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-          <Typography variant="h6">
-            Weekly Schedule: {format(weekDates[0] || new Date(), 'MMM d')} - {format(weekDates[4] || new Date(), 'MMM d, yyyy')}
-          </Typography>
-          <Box>
-            <Button 
-              variant="contained" 
-              color="primary"
-              startIcon={<Info />}
-              sx={{ mr: 2 }}
-              onClick={handleGenerateSchedule}
-            >
-              Generate Schedule
-            </Button>
-            <IconButton onClick={handlePreviousWeek}>
-              <NavigateBefore />
-            </IconButton>
-            <Tooltip title="Go to current week">
-              <IconButton onClick={handleCurrentWeek}>
-                <Today />
-              </IconButton>
-            </Tooltip>
-            <IconButton onClick={handleNextWeek}>
-              <NavigateNext />
-            </IconButton>
-          </Box>
-        </Box>
-
-        {/* Schedule Status */}
-        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
-          {schedule ? (
-            <>
-              <Chip 
-                label={`${schedule.assignments.length} Classes Scheduled`} 
-                color="success" 
-                size="small" 
-                sx={{ mr: 1 }}
-              />
-              {schedule.hardConstraintViolations && schedule.hardConstraintViolations > 0 ? (
-                <Chip 
-                  label={`${schedule.hardConstraintViolations} Constraint Violations`} 
-                  color="error" 
-                  size="small" 
-                />
-              ) : (
-                <Chip 
-                  label="No Constraint Violations" 
-                  color="success" 
-                  size="small" 
-                />
-              )}
-            </>
-          ) : (
-            <Chip 
-              label="No Schedule Generated" 
-              color="warning" 
-              size="small" 
-            />
-          )}
-        </Box>
-
-        {/* Schedule Grid */}
-        <Grid container spacing={1}>
-          {/* Header row with days */}
+    <DndProvider backend={isTouchDevice() ? TouchBackend : HTML5Backend}>
+      <Paper elevation={1} sx={{ p: 3, mt: 2 }}>
+        <Typography variant="h5" gutterBottom>
+          Weekly Schedule Dashboard
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Drag and drop classes to adjust the schedule. Classes can be temporarily removed to the storage zone below.
+        </Typography>
+        
+        <Divider sx={{ mb: 2 }} />
+        
+        <TemporaryDropZone 
+          onDrop={handleDropOnTemp} 
+          storedClasses={tempStorage}
+          onDragFromTemp={(classId) => {
+            // This is handled by the drag logic, no additional action needed
+          }}
+          onRemoveFromTemp={handleRemoveFromTemp}
+        />
+        
+        <Grid container spacing={1} className="schedule-grid">
+          {/* Header row with day names */}
           <Grid item xs={1}>
-            <Box sx={{ height: '40px' }}></Box>
+            <Box sx={{ height: '50px' }}></Box>
           </Grid>
-          {days.map((day, index) => (
-            <Grid item xs={2.2} key={day}>
-              <Paper 
-                elevation={2} 
+          {DAYS_OF_WEEK.map(day => (
+            <Grid item xs key={day}>
+              <Box 
                 sx={{ 
-                  p: 1, 
-                  textAlign: 'center',
-                  bgcolor: theme.palette.primary.main,
-                  color: 'white',
-                  height: '40px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  textAlign: 'center', 
+                  fontWeight: 'bold',
+                  p: 1,
+                  backgroundColor: 'primary.light',
+                  borderRadius: '4px 4px 0 0',
+                  color: 'primary.contrastText'
                 }}
               >
-                <Typography variant="subtitle2">
-                  {day} {weekDates[index] && `(${format(weekDates[index], 'MM/dd')})`}
-                </Typography>
-              </Paper>
+                {day}
+              </Box>
             </Grid>
           ))}
-
-          {/* Schedule body */}
-          {periods.map(period => (
-            <React.Fragment key={period}>
-              {/* Period column */}
+          
+          {/* Schedule grid */}
+          {Array.from({ length: PERIODS_PER_DAY }).map((_, periodIndex) => (
+            <React.Fragment key={periodIndex}>
+              {/* Period label */}
               <Grid item xs={1}>
-                <Paper 
-                  elevation={2} 
+                <Box 
                   sx={{ 
-                    p: 1, 
-                    textAlign: 'center',
-                    bgcolor: theme.palette.secondary.main,
-                    color: 'white',
-                    height: '80px',
-                    display: 'flex',
+                    display: 'flex', 
                     alignItems: 'center',
                     justifyContent: 'center',
+                    height: '100px',
+                    backgroundColor: 'grey.100',
+                    p: 1,
+                    fontWeight: 'medium'
                   }}
                 >
-                  <Typography variant="subtitle2">
-                    Period {period}
-                  </Typography>
-                </Paper>
+                  Period {periodIndex + 1}
+                </Box>
               </Grid>
-
+              
               {/* Day cells */}
-              {days.map(day => (
-                <Grid item xs={2.2} key={`${day}-${period}`}>
-                  <Box sx={{ 
-                    height: '80px', 
-                    borderRadius: 1,
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
-                    overflow: 'hidden',
-                  }}>
-                    {renderClassCell(day, period)}
-                  </Box>
-                </Grid>
-              ))}
+              {DAYS_OF_WEEK.map(day => {
+                const classId = findClassForTimeSlot(day as Day, periodIndex as Period);
+                const classObj = classId ? getClassById(classId) : undefined;
+                const isEmpty = !classId;
+                
+                return (
+                  <Grid item xs key={`${day}-${periodIndex}`}>
+                    <Box sx={{ height: '100px' }}>
+                      <DroppableCell
+                        day={day as Day}
+                        period={periodIndex as Period}
+                        onDrop={handleDropOnCell}
+                        isValidDropTarget={isValidDropTarget}
+                        isEmpty={isEmpty}
+                      >
+                        {classObj && classId && (
+                          <DraggableClassItem
+                            classObj={classObj}
+                            classId={classId}
+                            day={day}
+                            period={periodIndex}
+                          />
+                        )}
+                      </DroppableCell>
+                    </Box>
+                  </Grid>
+                );
+              })}
             </React.Fragment>
           ))}
         </Grid>
+        
+        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button 
+            variant="contained" 
+            color="primary" 
+            onClick={handleSaveSchedule}
+          >
+            Save Schedule
+          </Button>
+        </Box>
       </Paper>
-    </Box>
+      
+      {/* Notification system */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={4000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseNotification} 
+          severity={notification.severity}
+          sx={{ width: '100%' }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
+    </DndProvider>
   );
 };
 

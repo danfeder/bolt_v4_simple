@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Container, Typography, Box, Tabs, Tab } from '@mui/material';
+import { Container, Typography, Box, Tabs, Tab, Snackbar, Alert } from '@mui/material';
 import SchedulerCLI from './components/SchedulerCLI';
 import ConstraintInputForm from './components/ConstraintInputForm';
 import ConstraintSetManager from './components/ConstraintSetManager';
@@ -11,6 +11,15 @@ function App() {
   const [activeTab, setActiveTab] = useState(0);
   const [constraints, setConstraints] = useState<SchedulingConstraints | null>(null);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
+  const [notification, setNotification] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info' | 'warning';
+  }>({
+    open: false,
+    message: '',
+    severity: 'info'
+  });
 
   // Load saved constraints and schedule on mount
   useEffect(() => {
@@ -36,6 +45,7 @@ function App() {
     dataUtils.saveConstraints(newConstraints);
     setConstraints(newConstraints);
     console.log('Constraints saved to local storage');
+    showNotification('Constraints saved successfully', 'success');
   };
 
   const handleScheduleChange = (newSchedule: Schedule) => {
@@ -43,6 +53,23 @@ function App() {
     dataUtils.saveSchedule(newSchedule);
     setSchedule(newSchedule);
     console.log('Schedule saved to local storage');
+  };
+
+  // Show notification
+  const showNotification = (message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
+    setNotification({
+      open: true,
+      message,
+      severity
+    });
+  };
+
+  // Close notification
+  const handleCloseNotification = () => {
+    setNotification({
+      ...notification,
+      open: false
+    });
   };
 
   return (
@@ -80,6 +107,7 @@ function App() {
                 dataUtils.saveConstraints(loadedConstraints);
                 // Switch to constraints tab to show the loaded constraints
                 setActiveTab(0);
+                showNotification('Constraint set loaded successfully', 'success');
               }}
             />
           }
@@ -92,6 +120,22 @@ function App() {
           {activeTab === 3 && <SchedulerCLI />}
         </Box>
       </Box>
+      
+      {/* Global notification system */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={4000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseNotification} 
+          severity={notification.severity}
+          sx={{ width: '100%' }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 }
