@@ -473,15 +473,82 @@ const SchedulerCLI: React.FC = () => {
     }
   };
   
-  // Import command - placeholder for future implementation
+  // Import command
   const handleImport = () => {
-    setOutput(prev => [
-      ...prev,
-      'Import functionality is not yet implemented.',
-      'In a future version, this will allow importing classes from CSV files.'
-    ]);
+    // Create a file input element
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.csv,.json';
+    
+    // Handle file selection
+    fileInput.onchange = async (e) => {
+      const files = (e.target as HTMLInputElement).files;
+      if (!files || files.length === 0) return;
+      
+      const file = files[0];
+      const reader = new FileReader();
+      
+      reader.onload = async (e) => {
+        const content = e.target?.result as string;
+        if (!content) {
+          setOutput(prev => [...prev, { text: 'Could not read file content', type: 'error' }]);
+          return;
+        }
+        
+        try {
+          let message = '';
+          
+          if (file.name.endsWith('.csv')) {
+            // Import classes from CSV
+            const result = schedulerAPI.importClassesFromCsv(content, true);
+            message = `Imported ${result.imported} classes from CSV (${result.replaced} replaced, ${result.skipped} skipped)`;
+          } else if (file.name.endsWith('.json')) {
+            // Parse JSON to determine what kind of data it is
+            const jsonData = JSON.parse(content);
+            
+            if (Array.isArray(jsonData) && jsonData.length > 0 && 'name' in jsonData[0]) {
+              // It's likely an array of classes
+              schedulerAPI.setClasses(jsonData);
+              message = `Imported ${jsonData.length} classes from JSON file`;
+            } else if ('classes' in jsonData && Array.isArray(jsonData.classes)) {
+              // It's a schedule with classes
+              schedulerAPI.setClasses(jsonData.classes);
+              message = `Imported ${jsonData.classes.length} classes from schedule JSON file`;
+            } else {
+              setOutput(prev => [...prev, { text: 'Unknown JSON format', type: 'error' }]);
+              return;
+            }
+          } else {
+            setOutput(prev => [...prev, { text: 'Unsupported file format', type: 'error' }]);
+            return;
+          }
+          
+          // Update localStorage
+          dataUtils.saveClasses(schedulerAPI.getClasses());
+          setOutput(prev => [...prev, { text: message, type: 'success' }]);
+          
+          // Update class list display
+          // setClassList(schedulerAPI.getClasses());
+        } catch (error) {
+          console.error('Import error:', error);
+          setOutput(prev => [...prev, { 
+            text: `Error importing file: ${error instanceof Error ? error.message : 'Unknown error'}`, 
+            type: 'error' 
+          }]);
+        }
+      };
+      
+      reader.onerror = () => {
+        setOutput(prev => [...prev, { text: 'Error reading file', type: 'error' }]);
+      };
+      
+      reader.readAsText(file);
+    };
+    
+    // Trigger the file selection dialog
+    fileInput.click();
   };
-  
+
   return (
     <Paper elevation={3} sx={{ p: 3, maxWidth: 800, mx: 'auto', mt: 2 }}>
       <Typography variant="h5" component="h2" gutterBottom>

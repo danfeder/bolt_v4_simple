@@ -393,6 +393,77 @@ export class SchedulerAPI {
     
     return conflicts;
   }
+
+  /**
+   * Import classes from CSV content
+   * @param csvContent The CSV content to parse
+   * @param replaceExisting If true, replaces existing classes with the same name; if false, keeps existing classes
+   * @returns Object containing counts of imported, replaced, and skipped classes
+   */
+  importClassesFromCsv(csvContent: string, replaceExisting: boolean = false): { 
+    imported: number; 
+    replaced: number;
+    skipped: number;
+  } {
+    // Parse the CSV content
+    const importedClasses = dataUtils.parseClassesFromCSV(csvContent);
+    
+    if (importedClasses.length === 0) {
+      throw new Error('No valid class data found in the CSV file');
+    }
+    
+    // Track statistics
+    let replaced = 0;
+    let skipped = 0;
+    
+    // Create a map of existing classes by name for quick lookup
+    const existingClassesByName = new Map(
+      this.classes.map(cls => [cls.name, cls])
+    );
+    
+    // Process imported classes
+    const updatedClasses: Class[] = [...this.classes];
+    
+    for (const importedClass of importedClasses) {
+      const existingClass = existingClassesByName.get(importedClass.name);
+      
+      if (existingClass) {
+        if (replaceExisting) {
+          // Replace the existing class
+          const index = updatedClasses.findIndex(c => c.id === existingClass.id);
+          if (index >= 0) {
+            // Keep the same ID but update other properties
+            updatedClasses[index] = {
+              ...importedClass,
+              id: existingClass.id
+            };
+            replaced++;
+          }
+        } else {
+          // Skip this class
+          skipped++;
+        }
+      } else {
+        // Add as a new class
+        updatedClasses.push(importedClass);
+      }
+    }
+    
+    // Update the classes
+    this.classes = updatedClasses;
+    this.scheduler.setClasses(this.classes);
+    
+    // Persist to storage if not in test environment
+    if (!isTestEnv()) {
+      dataUtils.saveClasses(this.classes);
+    }
+    
+    return {
+      imported: importedClasses.length - skipped,
+      replaced,
+      skipped
+    };
+  }
 }
 
 // Export a singleton instance for easy access

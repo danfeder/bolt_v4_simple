@@ -109,8 +109,8 @@ export const dataUtils = {
 
   /**
    * Parse a CSV file containing class data
-   * Expected format: Name,Day1Conflicts,Day2Conflicts,...
-   * Where DayXConflicts is a comma-separated list of periods
+   * Expected format: Class,Monday,Tuesday,Wednesday,Thursday,Friday
+   * Where each day column contains comma-separated list of period numbers that are conflicts
    * @param csvText CSV text to parse
    * @returns Array of parsed classes
    */
@@ -121,10 +121,25 @@ export const dataUtils = {
     const days = [Day.MONDAY, Day.TUESDAY, Day.WEDNESDAY, Day.THURSDAY, Day.FRIDAY];
     const classes: Class[] = [];
     
-    // Skip header
+    // Parse header to confirm format
+    const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const expectedColumns = ['class', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+    
+    // Check if header contains expected columns
+    const headerValid = expectedColumns.every(col => header.includes(col));
+    if (!headerValid) {
+      console.error('Invalid CSV header format. Expected: Class,Monday,Tuesday,Wednesday,Thursday,Friday');
+      return [];
+    }
+    
+    // Skip header, process data rows
     for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split(',');
-      if (parts.length < 6) continue; // Need name + 5 days of conflicts
+      const line = lines[i].trim();
+      if (!line) continue;
+      
+      // Parse CSV line, handling quoted values that may contain commas
+      const parts = this.parseCSVLine(line);
+      if (parts.length < 6) continue; // Need class name + 5 days
       
       const name = parts[0].trim();
       const conflicts: { day: Day; period: Period }[] = [];
@@ -134,25 +149,55 @@ export const dataUtils = {
         const dayConflicts = parts[d + 1].trim();
         if (!dayConflicts) continue;
         
-        // Parse periods
-        const periods = dayConflicts.split(';')
-          .map(p => parseInt(p.trim(), 10))
-          .filter(p => !isNaN(p) && p >= 1 && p <= 8) as Period[];
-        
-        // Add conflicts for this day
-        for (const period of periods) {
-          conflicts.push({ day: days[d], period });
+        // Parse period numbers
+        const periodStrs = dayConflicts.replace(/"/g, '').split(/,\s*/);
+        for (const periodStr of periodStrs) {
+          const period = parseInt(periodStr.trim(), 10);
+          if (!isNaN(period) && period >= 1 && period <= 8) {
+            conflicts.push({ day: days[d], period: period as Period });
+          }
         }
       }
       
+      // Generate a unique ID based on class name
+      const id = `class_${name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')}`;
+      
       classes.push({
-        id: `class_${i}`,
+        id,
         name,
         conflicts
       });
     }
     
     return classes;
+  },
+  
+  /**
+   * Parse a CSV line, handling quoted values that might contain commas
+   * @param line CSV line to parse
+   * @returns Array of values from the line
+   */
+  parseCSVLine(line: string): string[] {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    // Add the last value
+    result.push(current);
+    return result;
   },
 
   /**
