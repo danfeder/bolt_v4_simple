@@ -50,6 +50,29 @@ export class GymClassScheduler {
   }
 
   /**
+   * Returns the current constraints used by the scheduler
+   * @returns An object containing hard and soft constraints
+   */
+  getConstraints(): { 
+    hard: { 
+      rotationStartDate?: Date;
+      [key: string]: any;
+    }; 
+    soft: {
+      [key: string]: any;
+    };
+  } {
+    return {
+      hard: {
+        // Add any hard constraints here if needed
+      },
+      soft: {
+        // Add any soft constraints here if needed
+      }
+    };
+  }
+
+  /**
    * Generates a schedule for the classes
    * @returns A Schedule object containing assignments and fitness information
    */
