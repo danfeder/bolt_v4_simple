@@ -8,6 +8,14 @@ import {
   TimeSlot,
   Assignment
 } from '../models/types';
+import { dataUtils } from '../utils/dataUtils';
+
+// Helper to detect if we're in a test environment
+const isTestEnv = (): boolean => {
+  return typeof process !== 'undefined' && 
+         process.env !== undefined && 
+         process.env.NODE_ENV === 'test';
+};
 
 /**
  * API wrapper for the GymClassScheduler, providing a simplified interface
@@ -16,6 +24,7 @@ import {
 export class SchedulerAPI {
   private scheduler: GymClassScheduler;
   private classes: Class[] = [];
+  private currentSchedule: Schedule | null = null;
 
   /**
    * Creates a new SchedulerAPI instance
@@ -23,6 +32,29 @@ export class SchedulerAPI {
    */
   constructor(config?: Partial<GeneticAlgorithmConfig>) {
     this.scheduler = new GymClassScheduler(config);
+    
+    // Skip loading saved data in test environment
+    if (!isTestEnv()) {
+      this.loadSavedData();
+    }
+  }
+
+  /**
+   * Loads previously saved data from storage
+   */
+  private loadSavedData(): void {
+    // Load classes
+    const savedClasses = dataUtils.loadClasses();
+    if (savedClasses && savedClasses.length > 0) {
+      this.classes = savedClasses;
+      this.scheduler.setClasses(this.classes);
+    }
+
+    // Load schedule
+    const savedSchedule = dataUtils.loadSchedule();
+    if (savedSchedule) {
+      this.currentSchedule = savedSchedule;
+    }
   }
 
   /**
@@ -32,6 +64,11 @@ export class SchedulerAPI {
   setClasses(classes: Class[]): void {
     this.classes = [...classes];
     this.scheduler.setClasses(this.classes);
+    
+    // Persist to storage if not in test environment
+    if (!isTestEnv()) {
+      dataUtils.saveClasses(this.classes);
+    }
   }
 
   /**
@@ -48,6 +85,11 @@ export class SchedulerAPI {
     
     this.classes.push(newClass);
     this.scheduler.setClasses(this.classes);
+    
+    // Persist to storage if not in test environment
+    if (!isTestEnv()) {
+      dataUtils.saveClasses(this.classes);
+    }
     
     return id;
   }
@@ -68,6 +110,12 @@ export class SchedulerAPI {
     };
     
     this.scheduler.setClasses(this.classes);
+    
+    // Persist to storage if not in test environment
+    if (!isTestEnv()) {
+      dataUtils.saveClasses(this.classes);
+    }
+    
     return true;
   }
 
@@ -82,6 +130,22 @@ export class SchedulerAPI {
     
     if (this.classes.length !== initialLength) {
       this.scheduler.setClasses(this.classes);
+      
+      // Persist to storage if not in test environment
+      if (!isTestEnv()) {
+        dataUtils.saveClasses(this.classes);
+      }
+      
+      // Also update the schedule if this class was assigned
+      if (this.currentSchedule) {
+        this.currentSchedule = {
+          ...this.currentSchedule,
+          assignments: this.currentSchedule.assignments.filter(a => a.classId !== id)
+        };
+        
+        this.saveSchedule(this.currentSchedule);
+      }
+      
       return true;
     }
     
@@ -113,7 +177,69 @@ export class SchedulerAPI {
       throw new Error('No classes to schedule');
     }
     
-    return this.scheduler.generateSchedule();
+    const generatedSchedule = this.scheduler.generateSchedule();
+    this.currentSchedule = generatedSchedule;
+    
+    // Persist to storage if not in test environment
+    if (!isTestEnv()) {
+      dataUtils.saveSchedule(generatedSchedule);
+    }
+    
+    return generatedSchedule;
+  }
+
+  /**
+   * Saves the current schedule to storage
+   * @param schedule The schedule to save (or current schedule if not provided)
+   * @returns The saved schedule
+   */
+  saveSchedule(schedule?: Schedule): Schedule {
+    if (!schedule && !this.currentSchedule) {
+      throw new Error('No schedule to save');
+    }
+    
+    const scheduleToSave = schedule || this.currentSchedule!;
+    this.currentSchedule = scheduleToSave;
+    
+    // Validate the schedule to ensure it's still valid after manual adjustments
+    const validation = this.validateSchedule(scheduleToSave);
+    
+    // Even if there are violations, we still save it to respect manual changes
+    if (!validation.isValid) {
+      console.warn('Saving schedule with constraint violations:', validation.violationDetails);
+    }
+    
+    // Persist to storage if not in test environment
+    if (!isTestEnv()) {
+      dataUtils.saveSchedule(scheduleToSave);
+    }
+    
+    return scheduleToSave;
+  }
+
+  /**
+   * Loads the saved schedule from storage
+   * @returns The loaded schedule or null if none exists
+   */
+  loadSchedule(): Schedule | null {
+    // Skip loading in test environment
+    if (isTestEnv()) {
+      return this.currentSchedule;
+    }
+    
+    const savedSchedule = dataUtils.loadSchedule();
+    if (savedSchedule) {
+      this.currentSchedule = savedSchedule;
+    }
+    return this.currentSchedule;
+  }
+
+  /**
+   * Gets the current schedule
+   * @returns Current schedule or null if none exists
+   */
+  getCurrentSchedule(): Schedule | null {
+    return this.currentSchedule;
   }
 
   /**
@@ -160,6 +286,11 @@ export class SchedulerAPI {
     classData.conflicts.push({ ...conflict });
     this.scheduler.setClasses(this.classes);
     
+    // Persist to storage if not in test environment
+    if (!isTestEnv()) {
+      dataUtils.saveClasses(this.classes);
+    }
+    
     return true;
   }
 
@@ -188,6 +319,12 @@ export class SchedulerAPI {
     }
     
     this.scheduler.setClasses(this.classes);
+    
+    // Persist to storage if not in test environment
+    if (!isTestEnv()) {
+      dataUtils.saveClasses(this.classes);
+    }
+    
     return classIds;
   }
   

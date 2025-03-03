@@ -3,7 +3,7 @@ import { useDrop } from 'react-dnd';
 import { Box, Typography, Tooltip } from '@mui/material';
 import { ItemTypes, DragItem } from './DraggableClassItem';
 import { Day, Period, Class } from '../models/types';
-import { getDropTooltip } from '../utils/dragDropUtils';
+import { getDropTooltip, validateClassMove } from '../utils/dragDropUtils';
 
 interface DroppableCellProps {
   day: Day;
@@ -12,6 +12,8 @@ interface DroppableCellProps {
   onDrop: (item: DragItem, day: Day, period: Period) => void;
   isValidDropTarget: (item: DragItem, day: Day, period: Period) => boolean;
   isEmpty: boolean;
+  classes?: Class[];
+  schedule?: any;
 }
 
 const DroppableCell: React.FC<DroppableCellProps> = ({
@@ -20,11 +22,22 @@ const DroppableCell: React.FC<DroppableCellProps> = ({
   children,
   onDrop,
   isValidDropTarget,
-  isEmpty
+  isEmpty,
+  classes = [],
+  schedule = null
 }) => {
   const [isOver, setIsOver] = useState(false);
   const [dragItem, setDragItem] = useState<DragItem | null>(null);
   const [tooltipOpen, setTooltipOpen] = useState(false);
+  const [validationResult, setValidationResult] = useState<{
+    isValid: boolean;
+    reason?: string;
+    conflictDetails?: {
+      type: 'OCCUPIED' | 'CLASS_CONFLICT';
+      conflictingClass?: string;
+      conflictDescription?: string;
+    }
+  } | null>(null);
 
   const [{ isOverCurrent }, drop] = useDrop(() => ({
     accept: ItemTypes.CLASS,
@@ -36,23 +49,51 @@ const DroppableCell: React.FC<DroppableCellProps> = ({
       isOverCurrent: !!monitor.isOver({ shallow: true })
     }),
     hover: (item, monitor) => {
+      const dragItem = item as DragItem;
       setIsOver(monitor.isOver({ shallow: true }));
-      setDragItem(item as DragItem);
+      setDragItem(dragItem);
+      
+      // If we have schedule and classes data, get detailed validation info
+      if (schedule && classes.length > 0 && dragItem.classId) {
+        try {
+          const result = validateClassMove(
+            dragItem.classId,
+            day,
+            period,
+            schedule,
+            classes
+          );
+          setValidationResult(result);
+        } catch (error) {
+          // Fallback to simple validation
+          setValidationResult({
+            isValid: isValidDropTarget(dragItem, day, period)
+          });
+        }
+      } else {
+        // Fallback to simple validation
+        setValidationResult({
+          isValid: isValidDropTarget(dragItem, day, period)
+        });
+      }
+      
       setTooltipOpen(true);
     }
-  }), [day, period, onDrop, isValidDropTarget]);
+  }), [day, period, onDrop, isValidDropTarget, schedule, classes]);
 
   // Reset hover state when drag ends
   React.useEffect(() => {
     if (!isOverCurrent) {
       setTooltipOpen(false);
+      setValidationResult(null);
     }
   }, [isOverCurrent]);
 
   // Determine cell styling based on drop state
   const getBackgroundColor = () => {
     if (isOverCurrent && dragItem) {
-      return isValidDropTarget(dragItem, day, period)
+      const isValid = validationResult ? validationResult.isValid : isValidDropTarget(dragItem, day, period);
+      return isValid
         ? 'rgba(0, 255, 0, 0.2)' // Valid drop - green tint
         : 'rgba(255, 0, 0, 0.2)'; // Invalid drop - red tint
     }
@@ -62,7 +103,8 @@ const DroppableCell: React.FC<DroppableCellProps> = ({
   // Get border style
   const getBorderStyle = () => {
     if (isOverCurrent && dragItem) {
-      return isValidDropTarget(dragItem, day, period)
+      const isValid = validationResult ? validationResult.isValid : isValidDropTarget(dragItem, day, period);
+      return isValid
         ? '2px dashed #4caf50' // Valid drop - green border
         : '2px dashed #f44336'; // Invalid drop - red border
     }
@@ -73,6 +115,15 @@ const DroppableCell: React.FC<DroppableCellProps> = ({
   const getTooltipMessage = (): string => {
     if (!dragItem) return '';
     
+    if (validationResult) {
+      return getDropTooltip(
+        validationResult.isValid, 
+        validationResult.reason,
+        validationResult.conflictDetails
+      );
+    }
+    
+    // Fallback to basic tooltip
     const isValid = isValidDropTarget(dragItem, day, period);
     return getDropTooltip(isValid);
   };
@@ -101,7 +152,7 @@ const DroppableCell: React.FC<DroppableCellProps> = ({
           }
         }}
         className={`drop-target ${isOverCurrent && dragItem ? 
-          (isValidDropTarget(dragItem, day, period) ? 'valid-target' : 'invalid-target') : ''}`}
+          (validationResult?.isValid || isValidDropTarget(dragItem, day, period) ? 'valid-target' : 'invalid-target') : ''}`}
       >
         {children || (
           <Typography variant="body2" color="text.secondary">

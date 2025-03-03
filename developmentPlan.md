@@ -149,7 +149,7 @@ Build a lean, user-friendly scheduling tool that:
 - **Task 4.1:** Develop the drag-and-drop interface for schedule adjustments. *(Completed)*
   - Visual indicators for valid drop zones based on constraints.
   - Temporary drop zone for rescheduling classes across multiple weeks.
-- **Task 4.2:** Ensure manual adjustments update the underlying schedule data.
+- **Task 4.2:** Ensure manual adjustments update the underlying schedule data. *(Completed)*
 - **Task 4.3:** Optionally, enable re-optimization after manual adjustments if necessary.
 
 ### Phase 5: File Management for Class Conflict Data

@@ -90,6 +90,25 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
     loadData();
   }, [schedule]);
 
+  // Update the underlying data model and notify parents
+  const updateSchedule = (updatedSchedule: Schedule) => {
+    setCurrentSchedule(updatedSchedule);
+    
+    // Update scheduler API
+    try {
+      schedulerApi.saveSchedule(updatedSchedule);
+      // Only show notification for manual saves, not automatic ones from drag and drop
+    } catch (err) {
+      console.error('Error updating schedule in API:', err);
+      showNotification('Changes saved locally but failed to update engine data. Your changes may not persist after reload.', 'warning');
+    }
+    
+    // Notify parent component about the change
+    if (onScheduleChange) {
+      onScheduleChange(updatedSchedule);
+    }
+  };
+
   // Handle class drop on a cell
   const handleDropOnCell = (item: DragItem, day: Day, period: Period) => {
     if (!currentSchedule) return;
@@ -98,8 +117,9 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
     const validationResult = validateClassMove(item.classId, day, period, currentSchedule, classes);
     
     if (!validationResult.isValid) {
-      // Show an error notification
-      showNotification(validationResult.reason || 'Invalid move', 'error');
+      // Show an error notification with enhanced details
+      const detailMessage = validationResult.conflictDetails?.conflictDescription || validationResult.reason || 'Invalid move';
+      showNotification(detailMessage, 'error');
       return;
     }
     
@@ -110,20 +130,20 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
       { day, period }
     );
     
-    setCurrentSchedule(updatedSchedule);
-    
-    // Notify parent component about the change
-    if (onScheduleChange) {
-      onScheduleChange(updatedSchedule);
-    }
+    // Update the schedule in state and API
+    updateSchedule(updatedSchedule);
     
     // Check if the class was in temp storage and remove it if it was
     if (tempStorage.some(tempClass => tempClass.classId === item.classId)) {
       setTempStorage(prev => prev.filter(tempClass => tempClass.classId !== item.classId));
     }
     
-    // Show success notification
-    showNotification('Class moved successfully', 'success');
+    // Get class name for better feedback
+    const classObj = classes.find(c => c.id === item.classId);
+    const className = classObj ? classObj.name : item.classId;
+    
+    // Show success notification with enhanced details
+    showNotification(`${className} moved to ${day}, Period ${period + 1}`, 'success');
   };
 
   // Handle class drop on temporary storage
@@ -151,7 +171,8 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
       )
     };
     
-    setCurrentSchedule(updatedSchedule);
+    // Update the schedule in state and API
+    updateSchedule(updatedSchedule);
     
     // Add to temp storage
     setTempStorage(prev => [
@@ -162,11 +183,6 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
         originalTimeSlot: item.originalTimeSlot
       }
     ]);
-    
-    // Notify parent component about the change
-    if (onScheduleChange) {
-      onScheduleChange(updatedSchedule);
-    }
     
     showNotification('Class moved to temporary storage', 'info');
   };
@@ -201,16 +217,19 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
     return classes.find(c => c.id === classId);
   };
 
-  // Handle saving the current schedule
+  // Handle saving the current schedule (button click)
   const handleSaveSchedule = () => {
     if (!currentSchedule) return;
     
     try {
       schedulerApi.saveSchedule(currentSchedule);
-      showNotification('Schedule saved successfully', 'success');
+      
+      // Count the number of assignments for better feedback
+      const assignmentCount = currentSchedule.assignments.length;
+      showNotification(`Schedule with ${assignmentCount} class assignments saved successfully`, 'success');
     } catch (err) {
       console.error('Error saving schedule:', err);
-      showNotification('Failed to save schedule', 'error');
+      showNotification('Failed to save schedule. Please try again.', 'error');
     }
   };
 
@@ -221,6 +240,11 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
       message,
       severity
     });
+    
+    // For errors and warnings, log to console for debugging
+    if (severity === 'error' || severity === 'warning') {
+      console.log(`[${severity.toUpperCase()}] ${message}`);
+    }
   };
 
   // Close notification
@@ -333,6 +357,8 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
                         onDrop={handleDropOnCell}
                         isValidDropTarget={isValidDropTarget}
                         isEmpty={isEmpty}
+                        classes={classes}
+                        schedule={currentSchedule}
                       >
                         {classObj && classId && (
                           <DraggableClassItem
@@ -362,7 +388,7 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
         </Box>
       </Paper>
       
-      {/* Notification system */}
+      {/* Enhanced notification system */}
       <Snackbar
         open={notification.open}
         autoHideDuration={4000}
@@ -373,6 +399,7 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
           onClose={handleCloseNotification} 
           severity={notification.severity}
           sx={{ width: '100%' }}
+          variant="filled"
         >
           {notification.message}
         </Alert>

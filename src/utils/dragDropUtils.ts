@@ -19,16 +19,33 @@ export const validateClassMove = (
   targetPeriod: Period,
   schedule: Schedule,
   classes: Class[]
-): { isValid: boolean; reason?: string } => {
+): { 
+  isValid: boolean; 
+  reason?: string;
+  conflictDetails?: {
+    type: 'OCCUPIED' | 'CLASS_CONFLICT';
+    conflictingClass?: string;
+    conflictDescription?: string;
+  }
+} => {
   // Check if there's already a class in this time slot
   const existingAssignment = schedule.assignments.find(
     a => a.timeSlot.day === targetDay && a.timeSlot.period === targetPeriod
   );
   
   if (existingAssignment) {
+    // Get the existing class name for better feedback
+    const existingClass = classes.find(c => c.id === existingAssignment.classId);
+    const existingClassName = existingClass ? existingClass.name : existingAssignment.classId;
+    
     return { 
       isValid: false, 
-      reason: `Time slot is already occupied by ${existingAssignment.classId}` 
+      reason: `Time slot is already occupied by ${existingClassName}`,
+      conflictDetails: {
+        type: 'OCCUPIED',
+        conflictingClass: existingAssignment.classId,
+        conflictDescription: `${existingClassName} is already scheduled at this time`
+      }
     };
   }
   
@@ -49,9 +66,16 @@ export const validateClassMove = (
   if (hasConflict) {
     return { 
       isValid: false, 
-      reason: 'Class has a conflict during this time slot' 
+      reason: `${classObj.name} has a scheduling conflict during this time slot`,
+      conflictDetails: {
+        type: 'CLASS_CONFLICT',
+        conflictDescription: `${classObj.name} has a constraint that prevents scheduling during this time`
+      }
     };
   }
+  
+  // Additional check: look for other scheduling constraints
+  // (This is a placeholder for future enhanced constraint checks)
   
   // All checks passed
   return { isValid: true };
@@ -98,11 +122,31 @@ export const moveClassInSchedule = (
  * Gets the corresponding tooltip message for a drop validation
  * @param isValid Whether the drop is valid
  * @param reason Reason for invalid drop
+ * @param conflictDetails Additional details about the conflict
  * @returns Tooltip message
  */
-export const getDropTooltip = (isValid: boolean, reason?: string): string => {
+export const getDropTooltip = (
+  isValid: boolean, 
+  reason?: string, 
+  conflictDetails?: {
+    type: 'OCCUPIED' | 'CLASS_CONFLICT';
+    conflictingClass?: string;
+    conflictDescription?: string;
+  }
+): string => {
   if (isValid) {
     return 'Drop here to move class to this time slot';
+  }
+  
+  if (conflictDetails) {
+    switch (conflictDetails.type) {
+      case 'OCCUPIED':
+        return `Cannot place class here: ${conflictDetails.conflictDescription}`;
+      case 'CLASS_CONFLICT':
+        return `Cannot place class here: ${conflictDetails.conflictDescription}`;
+      default:
+        return reason || 'Cannot move class to this time slot';
+    }
   }
   
   return reason || 'Cannot move class to this time slot';
