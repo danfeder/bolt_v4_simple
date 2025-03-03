@@ -133,10 +133,10 @@ Build a lean, user-friendly scheduling tool that:
 - **Task 2.3:** Create a streamlined fitness function. *(Completed)*
   - Hard constraint violations receive high penalties.
   - Soft constraints are rewarded with lower-weighted bonuses.
-- **Task 2.4:** Implement basic genetic operators. *(Done)*
+- **Task 2.4:** Implement basic genetic operators. *(Completed)*
   - Single crossover method (one-point/uniform).
   - Simple mutation operator (swapping class assignments).
-- **Task 2.5:** Integrate the scheduling engine with a basic API/CLI for testing (all running in the browser).
+- **Task 2.5:** Integrate the scheduling engine with a basic API/CLI for testing (all running in the browser). *(Completed)*
 
 ### Phase 3: Build the GUI and Constraint Input Module
 - **Task 3.1:** Develop the constraint input form.
