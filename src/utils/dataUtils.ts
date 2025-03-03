@@ -1,4 +1,4 @@
-import { Class, Schedule, Assignment, Day, Period } from '../models/types';
+import { Class, Schedule, Assignment, Day, Period, SchedulingConstraints } from '../models/types';
 
 /**
  * Utility functions for loading and saving data for the scheduler
@@ -165,5 +165,43 @@ export const dataUtils = {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 100);
+  },
+
+  /**
+   * Saves a set of scheduling constraints to local storage
+   * @param constraints The constraints to save
+   */
+  saveConstraints(constraints: SchedulingConstraints): void {
+    try {
+      localStorage.setItem('gym-scheduler-constraints', JSON.stringify(constraints));
+    } catch (error) {
+      console.error('Failed to save constraints to local storage:', error);
+    }
+  },
+
+  /**
+   * Loads a set of scheduling constraints from local storage
+   * @returns The loaded constraints, or null if none were found
+   */
+  loadConstraints(): SchedulingConstraints | null {
+    try {
+      const constraintsJson = localStorage.getItem('gym-scheduler-constraints');
+      if (constraintsJson) {
+        const constraints = JSON.parse(constraintsJson) as SchedulingConstraints;
+        
+        // Convert date strings back to Date objects
+        if (constraints.hard.rotationStartDate) {
+          constraints.hard.rotationStartDate = new Date(constraints.hard.rotationStartDate);
+        }
+        if (constraints.hard.rotationEndDate) {
+          constraints.hard.rotationEndDate = new Date(constraints.hard.rotationEndDate);
+        }
+        
+        return constraints;
+      }
+    } catch (error) {
+      console.error('Failed to load constraints from local storage:', error);
+    }
+    return null;
   }
 };
