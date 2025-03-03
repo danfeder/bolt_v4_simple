@@ -1,15 +1,14 @@
 import React from 'react';
 import {
   Box,
+  FormControl,
   FormControlLabel,
   Switch,
   Typography,
   Grid,
-  FormControl,
   InputLabel,
   Select,
   MenuItem,
-  FormHelperText,
   Button
 } from '@mui/material';
 import { SoftConstraints, Day, Period, TimeSlot } from '../models/types';

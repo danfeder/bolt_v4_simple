@@ -1,18 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Box, 
-  TextField, 
-  Button, 
-  Typography, 
-  Paper, 
-  List, 
-  ListItem,
-  ListItemText,
-  Divider
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Box,
+  Typography,
+  TextField,
+  Paper,
+  Button
 } from '@mui/material';
-import { schedulerApi } from '../engine/schedulerAPI';
-import { Schedule, Class, Day, Period } from '../models/types';
+import { SchedulerAPI } from '../engine/schedulerAPI';
 import { dataUtils } from '../utils/dataUtils';
+import { Schedule, Day } from '../models/types';
+import './SchedulerCLI.css';
 
 /**
  * A command-line interface component for testing the scheduling engine
@@ -20,12 +17,15 @@ import { dataUtils } from '../utils/dataUtils';
 const SchedulerCLI: React.FC = () => {
   const [input, setInput] = useState('');
   const [output, setOutput] = useState<string[]>([
-    'Welcome to the Scheduler CLI!',
-    'Type "help" for a list of commands.',
+    'Welcome to the Gym Class Scheduler CLI!',
+    'Type "help" for a list of commands.'
   ]);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
-  
   const outputEndRef = useRef<HTMLDivElement>(null);
+  
+  // Create a reference to the scheduler API
+  const schedulerAPIRef = useRef(new SchedulerAPI());
+  const schedulerAPI = schedulerAPIRef.current;
   
   // Auto-scroll to bottom when output changes
   useEffect(() => {
@@ -39,7 +39,7 @@ const SchedulerCLI: React.FC = () => {
     const savedClasses = dataUtils.loadClasses();
     if (savedClasses && savedClasses.length > 0) {
       // Load the classes into the API
-      schedulerApi.setClasses(savedClasses);
+      schedulerAPI.setClasses(savedClasses);
       setOutput(prev => [...prev, `Loaded ${savedClasses.length} classes from storage.`]);
     }
 
@@ -120,6 +120,17 @@ const SchedulerCLI: React.FC = () => {
     }
   };
   
+  // Handle key presses
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (input.trim()) {
+        handleCommand(input);
+        setInput('');
+      }
+    }
+  };
+  
   // Help command
   const handleHelp = () => {
     setOutput(prev => [
@@ -143,27 +154,23 @@ const SchedulerCLI: React.FC = () => {
   };
   
   // Generate command
-  const handleGenerate = (args: string[]) => {
+  const handleGenerate = (_args: string[]) => {
     try {
-      const schedule = schedulerApi.generateSchedule();
+      const schedule = schedulerAPI.generateSchedule();
       setSchedule(schedule);
       
       // Save the schedule to storage
       dataUtils.saveSchedule(schedule);
       
-      // Display schedule summary
       setOutput(prev => [
-        ...prev,
-        `Schedule generated with ${schedule.assignments.length} assignments.`,
-        `Fitness score: ${schedule.fitness}`,
-        `Hard constraint violations: ${schedule.hardConstraintViolations}`,
+        ...prev, 
+        'Generated schedule successfully!', 
         'Schedule saved to local storage.',
-        'Type "list schedule" to see the full schedule.',
+        'Use "view schedule" to see the results.'
       ]);
     } catch (error) {
-      if (error instanceof Error) {
-        setOutput(prev => [...prev, `Failed to generate schedule: ${error.message}`]);
-      }
+      console.error('Failed to generate schedule:', error);
+      setOutput(prev => [...prev, `Error: ${(error as Error).message || 'Failed to generate schedule'}`]);
     }
   };
   
@@ -175,13 +182,13 @@ const SchedulerCLI: React.FC = () => {
     }
     
     const className = args.join(' ');
-    const id = schedulerApi.addClass({
+    const id = schedulerAPI.addClass({
       name: className,
       conflicts: []
     });
     
     // Save classes to storage
-    dataUtils.saveClasses(schedulerApi.getClasses());
+    dataUtils.saveClasses(schedulerAPI.getClasses());
     
     setOutput(prev => [...prev, `Added class "${className}" with ID ${id}`, 'Classes saved to local storage.']);
   };
@@ -197,11 +204,11 @@ const SchedulerCLI: React.FC = () => {
     
     switch (subCommand) {
       case 'classes':
-        const classes = schedulerApi.getClasses();
+        const classes = schedulerAPI.getClasses();
         setOutput(prev => [
           ...prev,
           `Found ${classes.length} classes:`,
-          ...classes.map(c => `- ${c.id}: ${c.name} (${c.conflicts.length} conflicts)`)
+          ...classes.map((c: any) => `- ${c.id}: ${c.name} (${c.conflicts.length} conflicts)`)
         ]);
         break;
       
@@ -240,7 +247,7 @@ const SchedulerCLI: React.FC = () => {
           for (const assignment of dayAssignments) {
             const classId = assignment.classId;
             const period = assignment.timeSlot.period;
-            const classObj = schedulerApi.getClasses().find(c => c.id === classId);
+            const classObj = schedulerAPI.getClasses().find((c: any) => c.id === classId);
             const className = classObj ? classObj.name : 'Unknown class';
             
             output.push(`  Period ${period}: ${className} (${classId})`);
@@ -264,10 +271,10 @@ const SchedulerCLI: React.FC = () => {
       return;
     }
     
-    const classIds = schedulerApi.generateRandomTestData(count);
+    const classIds = schedulerAPI.generateRandomTestData(count);
     
     // Save classes to storage
-    dataUtils.saveClasses(schedulerApi.getClasses());
+    dataUtils.saveClasses(schedulerAPI.getClasses());
     
     setOutput(prev => [
       ...prev,
@@ -304,7 +311,7 @@ const SchedulerCLI: React.FC = () => {
     
     // Update config
     const config: Record<string, number> = { [param]: value };
-    schedulerApi.updateConfig(config);
+    schedulerAPI.updateConfig(config);
     
     setOutput(prev => [...prev, `Updated ${param} to ${value}`]);
   };
@@ -316,14 +323,14 @@ const SchedulerCLI: React.FC = () => {
       return;
     }
     
-    const validation = schedulerApi.validateSchedule(schedule);
+    const validation = schedulerAPI.validateSchedule(schedule);
     
     setOutput(prev => [
       ...prev,
       `Schedule validation: ${validation.isValid ? 'VALID' : 'INVALID'}`,
       `Hard constraint violations: ${validation.hardConstraintViolations}`,
       'Violation details:',
-      ...validation.violationDetails.map(d => `- ${d}`)
+      ...validation.violationDetails.map((d: string) => `- ${d}`)
     ]);
   };
   
@@ -338,7 +345,7 @@ const SchedulerCLI: React.FC = () => {
     
     switch (subCommand) {
       case 'classes':
-        dataUtils.saveClasses(schedulerApi.getClasses());
+        dataUtils.saveClasses(schedulerAPI.getClasses());
         setOutput(prev => [...prev, 'Classes saved to local storage.']);
         break;
       
@@ -353,7 +360,7 @@ const SchedulerCLI: React.FC = () => {
         break;
       
       case 'all':
-        dataUtils.saveClasses(schedulerApi.getClasses());
+        dataUtils.saveClasses(schedulerAPI.getClasses());
         
         if (schedule) {
           dataUtils.saveSchedule(schedule);
@@ -376,7 +383,7 @@ const SchedulerCLI: React.FC = () => {
     // Load classes
     const classes = dataUtils.loadClasses();
     if (classes && classes.length > 0) {
-      schedulerApi.setClasses(classes);
+      schedulerAPI.setClasses(classes);
       setOutput(prev => [...prev, `Loaded ${classes.length} classes from local storage.`]);
     } else {
       setOutput(prev => [...prev, 'No classes found in local storage.']);
@@ -410,11 +417,11 @@ const SchedulerCLI: React.FC = () => {
             return;
           }
           
-          const csv = dataUtils.exportScheduleToCSV(schedule, schedulerApi.getClasses());
+          const csv = dataUtils.exportScheduleToCSV(schedule, schedulerAPI.getClasses());
           dataUtils.downloadData(csv, 'schedule.csv', 'text/csv');
           setOutput(prev => [...prev, 'Schedule exported to CSV file.']);
         } else if (target === 'classes') {
-          const classes = schedulerApi.getClasses();
+          const classes = schedulerAPI.getClasses();
           
           if (classes.length === 0) {
             setOutput(prev => [...prev, 'No classes to export.']);
@@ -424,7 +431,7 @@ const SchedulerCLI: React.FC = () => {
           // Simple CSV export for classes
           let csv = 'ID,Name,Conflicts\n';
           for (const cls of classes) {
-            const conflicts = cls.conflicts.map(c => `${c.day} ${c.period}`).join(';');
+            const conflicts = cls.conflicts.map((c: any) => `${c.day} ${c.period}`).join(';');
             csv += `${cls.id},${cls.name},${conflicts}\n`;
           }
           
@@ -446,7 +453,7 @@ const SchedulerCLI: React.FC = () => {
           dataUtils.downloadData(json, 'schedule.json', 'application/json');
           setOutput(prev => [...prev, 'Schedule exported to JSON file.']);
         } else if (target === 'classes') {
-          const classes = schedulerApi.getClasses();
+          const classes = schedulerAPI.getClasses();
           
           if (classes.length === 0) {
             setOutput(prev => [...prev, 'No classes to export.']);
@@ -476,46 +483,43 @@ const SchedulerCLI: React.FC = () => {
   };
   
   return (
-    <Paper elevation={3} sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Typography variant="h6" gutterBottom>
+    <Paper elevation={3} sx={{ p: 3, maxWidth: 800, mx: 'auto', mt: 2 }}>
+      <Typography variant="h5" component="h2" gutterBottom>
         Scheduler Command Line Interface
       </Typography>
       
-      <Box sx={{ 
-        flex: 1, 
-        mb: 2, 
-        p: 1, 
-        bgcolor: 'black', 
-        color: 'lightgreen', 
-        fontFamily: 'monospace', 
-        height: '400px',
-        overflowY: 'auto' 
-      }}>
-        {output.map((line, index) => (
-          <div key={index} style={{ whiteSpace: 'pre-wrap' }}>
-            {line}
-          </div>
-        ))}
-        <div ref={outputEndRef} />
-      </Box>
-      
-      <form onSubmit={handleSubmit} style={{ display: 'flex' }}>
-        <TextField
-          fullWidth
-          variant="outlined"
-          size="small"
-          placeholder="Enter command..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          InputProps={{
-            style: { fontFamily: 'monospace' }
-          }}
-          sx={{ mr: 1 }}
-        />
-        <Button type="submit" variant="contained" color="primary">
-          Execute
-        </Button>
-      </form>
+      <div className="cli-container">
+        <div className="cli-output">
+          {output.map((line, index) => (
+            <div key={index} className="cli-output-line">
+              {line}
+            </div>
+          ))}
+          <div ref={outputEndRef} />
+        </div>
+        
+        <div className="cli-input-container">
+          <span className="cli-prompt">$</span>
+          <TextField
+            variant="outlined"
+            fullWidth
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a command..."
+            size="small"
+            autoFocus
+          />
+          <Button 
+            variant="contained" 
+            color="primary"
+            onClick={handleSubmit}
+            sx={{ ml: 1 }}
+          >
+            Execute
+          </Button>
+        </div>
+      </div>
     </Paper>
   );
 };

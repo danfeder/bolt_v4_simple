@@ -1,13 +1,10 @@
 import React from 'react';
 import {
-  Box,
-  TextField,
-  FormControl,
-  FormLabel,
   Grid,
-  InputAdornment,
+  TextField,
+  Typography,
+  Box,
   Slider,
-  Typography
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { HardConstraints } from '../models/types';
@@ -72,12 +69,12 @@ const HardConstraintsSection: React.FC<HardConstraintsSectionProps> = ({
         
         {/* Maximum Consecutive Periods */}
         <Grid item xs={12}>
-          <Typography gutterBottom>
-            Maximum Consecutive Periods Without a Break
+          <Typography id="max-consecutive-periods-slider" gutterBottom>
+            Maximum Consecutive Periods: {constraints.maxConsecutivePeriods}
           </Typography>
           <Slider
             value={constraints.maxConsecutivePeriods}
-            onChange={(e, value) => 
+            onChange={(_event: Event, value: number | number[], _activeThumb: number) => 
               onChange({
                 ...constraints,
                 maxConsecutivePeriods: value as number

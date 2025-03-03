@@ -1,6 +1,17 @@
 import { Class, Schedule, Assignment, Day, Period, SchedulingConstraints } from '../models/types';
 
 /**
+ * Interface for constraint set metadata
+ */
+export interface ConstraintSetMetadata {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * Utility functions for loading and saving data for the scheduler
  */
 export const dataUtils = {
@@ -203,5 +214,169 @@ export const dataUtils = {
       console.error('Failed to load constraints from local storage:', error);
     }
     return null;
+  },
+
+  /**
+   * Generates a unique ID for constraint sets
+   * @returns A unique string ID
+   */
+  generateId(): string {
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+  },
+
+  /**
+   * Save a named constraint set with metadata
+   * @param name The name of the constraint set
+   * @param constraints The constraints to save
+   * @param description Optional description for the constraint set
+   * @param existingId Optional ID of an existing constraint set to update
+   * @returns The ID of the saved constraint set
+   */
+  saveNamedConstraintSet(
+    name: string,
+    constraints: SchedulingConstraints,
+    description: string = '',
+    existingId?: string
+  ): string {
+    try {
+      // Get existing metadata
+      const metadataList = this.getConstraintSetsList();
+      
+      // Create new metadata entry or update existing
+      const timestamp = new Date().toISOString();
+      let id = existingId || '';
+      let updatedMetadataList: ConstraintSetMetadata[] = [];
+      
+      if (existingId) {
+        // Update existing set by ID
+        const existingIndex = metadataList.findIndex(m => m.id === existingId);
+        if (existingIndex >= 0) {
+          // Update existing set
+          metadataList[existingIndex].name = name;
+          metadataList[existingIndex].updatedAt = timestamp;
+          metadataList[existingIndex].description = description;
+          updatedMetadataList = [...metadataList];
+        } else {
+          // ID not found, treat as new
+          id = this.generateId();
+          const newMetadata: ConstraintSetMetadata = {
+            id,
+            name,
+            description,
+            createdAt: timestamp,
+            updatedAt: timestamp
+          };
+          updatedMetadataList = [...metadataList, newMetadata];
+        }
+      } else {
+        // Check if a set with this name already exists
+        const existingIndex = metadataList.findIndex(m => m.name === name);
+        if (existingIndex >= 0) {
+          // Update existing set
+          id = metadataList[existingIndex].id;
+          metadataList[existingIndex].updatedAt = timestamp;
+          if (description) {
+            metadataList[existingIndex].description = description;
+          }
+          updatedMetadataList = [...metadataList];
+        } else {
+          // Create new set
+          id = this.generateId();
+          const newMetadata: ConstraintSetMetadata = {
+            id,
+            name,
+            description,
+            createdAt: timestamp,
+            updatedAt: timestamp
+          };
+          updatedMetadataList = [...metadataList, newMetadata];
+        }
+      }
+      
+      // Save metadata
+      localStorage.setItem('gym-scheduler-constraint-sets-meta', JSON.stringify(updatedMetadataList));
+      
+      // Save actual constraints
+      localStorage.setItem(`gym-scheduler-constraint-set-${id}`, JSON.stringify(constraints));
+      
+      return id;
+    } catch (error) {
+      console.error('Failed to save named constraint set:', error);
+      return '';
+    }
+  },
+
+  /**
+   * Gets the list of all saved constraint sets
+   * @returns Array of constraint set metadata
+   */
+  getConstraintSetsList(): ConstraintSetMetadata[] {
+    try {
+      const json = localStorage.getItem('gym-scheduler-constraint-sets-meta');
+      if (json) {
+        return JSON.parse(json) as ConstraintSetMetadata[];
+      }
+    } catch (error) {
+      console.error('Failed to get constraint sets list:', error);
+    }
+    return [];
+  },
+
+  /**
+   * Loads a specific constraint set by ID
+   * @param id The ID of the constraint set to load
+   * @returns The constraints, or null if not found
+   */
+  loadConstraintSetById(id: string): SchedulingConstraints | null {
+    try {
+      const json = localStorage.getItem(`gym-scheduler-constraint-set-${id}`);
+      if (json) {
+        const constraints = JSON.parse(json) as SchedulingConstraints;
+        
+        // Convert date strings back to Date objects
+        if (constraints.hard.rotationStartDate) {
+          constraints.hard.rotationStartDate = new Date(constraints.hard.rotationStartDate);
+        }
+        if (constraints.hard.rotationEndDate) {
+          constraints.hard.rotationEndDate = new Date(constraints.hard.rotationEndDate);
+        }
+        
+        return constraints;
+      }
+    } catch (error) {
+      console.error(`Failed to load constraint set with ID ${id}:`, error);
+    }
+    return null;
+  },
+
+  /**
+   * Deletes a constraint set by ID
+   * @param id The ID of the constraint set to delete
+   * @returns True if deleted successfully, false otherwise
+   */
+  deleteConstraintSet(id: string): boolean {
+    try {
+      // Get metadata list
+      const metadataList = this.getConstraintSetsList();
+      
+      // Find and remove from metadata
+      const updatedList = metadataList.filter(item => item.id !== id);
+      
+      // If no change, the ID wasn't found
+      if (updatedList.length === metadataList.length) {
+        return false;
+      }
+      
+      // Update metadata
+      localStorage.setItem('gym-scheduler-constraint-sets-meta', JSON.stringify(updatedList));
+      
+      // Remove the actual constraints
+      localStorage.removeItem(`gym-scheduler-constraint-set-${id}`);
+      
+      return true;
+    } catch (error) {
+      console.error(`Failed to delete constraint set with ID ${id}:`, error);
+      return false;
+    }
   }
 };

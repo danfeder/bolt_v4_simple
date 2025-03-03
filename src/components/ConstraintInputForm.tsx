@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -7,7 +7,8 @@ import {
   Button,
   Stack,
   Alert,
-  Snackbar
+  Snackbar,
+  Chip
 } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -56,12 +57,45 @@ const ConstraintInputForm: React.FC<ConstraintInputFormProps> = ({
     initialConstraints?.soft || defaultSoftConstraints
   );
 
+  // Track if the form has been modified
+  const [isModified, setIsModified] = useState(false);
+
   // State for notification
   const [notification, setNotification] = useState({
     open: false,
     message: '',
-    severity: 'success' as 'success' | 'error'
+    severity: 'success' as 'success' | 'error' | 'info'
   });
+
+  // Reset modified state when initialConstraints change
+  useEffect(() => {
+    if (initialConstraints) {
+      setHardConstraints(initialConstraints.hard);
+      setSoftConstraints(initialConstraints.soft);
+      setIsModified(false);
+    }
+  }, [initialConstraints]);
+
+  // Update hard constraints
+  const handleHardConstraintsChange = (constraints: HardConstraints) => {
+    setHardConstraints(constraints);
+    setIsModified(true);
+  };
+
+  // Update soft constraints
+  const handleSoftConstraintsChange = (constraints: SoftConstraints) => {
+    setSoftConstraints(constraints);
+    setIsModified(true);
+  };
+
+  // Update personal conflicts
+  const handlePersonalConflictsChange = (conflicts: any[]) => {
+    setHardConstraints({
+      ...hardConstraints,
+      personalConflicts: conflicts
+    });
+    setIsModified(true);
+  };
 
   // Handle form submission
   const handleSubmit = (e: React.FormEvent) => {
@@ -76,6 +110,8 @@ const ConstraintInputForm: React.FC<ConstraintInputFormProps> = ({
       message: 'Constraints saved successfully!',
       severity: 'success'
     });
+    
+    setIsModified(false);
   };
 
   // Handle reset
@@ -88,6 +124,8 @@ const ConstraintInputForm: React.FC<ConstraintInputFormProps> = ({
       message: 'Form reset to initial values',
       severity: 'info'
     });
+    
+    setIsModified(false);
   };
 
   // Handle notification close
@@ -103,9 +141,19 @@ const ConstraintInputForm: React.FC<ConstraintInputFormProps> = ({
         onSubmit={handleSubmit}
         sx={{ p: 3, maxWidth: 800, mx: 'auto', mt: 2 }}
       >
-        <Typography variant="h4" component="h2" gutterBottom>
-          Scheduling Constraints
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h4" component="h2" gutterBottom>
+            Scheduling Constraints
+          </Typography>
+          {isModified && (
+            <Chip 
+              label="Modified" 
+              color="warning" 
+              variant="outlined" 
+              size="small"
+            />
+          )}
+        </Box>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
           Define the constraints for the gym class scheduler
         </Typography>
@@ -113,10 +161,7 @@ const ConstraintInputForm: React.FC<ConstraintInputFormProps> = ({
         {/* Personal Conflicts Section */}
         <PersonalConflictsSection 
           conflicts={hardConstraints.personalConflicts}
-          onChange={(conflicts) => setHardConstraints({
-            ...hardConstraints,
-            personalConflicts: conflicts
-          })}
+          onChange={handlePersonalConflictsChange}
         />
 
         <Divider sx={{ my: 3 }} />
@@ -131,7 +176,7 @@ const ConstraintInputForm: React.FC<ConstraintInputFormProps> = ({
 
           <HardConstraintsSection 
             constraints={hardConstraints}
-            onChange={setHardConstraints}
+            onChange={handleHardConstraintsChange}
           />
         </Box>
 
@@ -147,15 +192,25 @@ const ConstraintInputForm: React.FC<ConstraintInputFormProps> = ({
 
           <SoftConstraintsSection 
             constraints={softConstraints}
-            onChange={setSoftConstraints}
+            onChange={handleSoftConstraintsChange}
           />
         </Box>
 
         <Stack direction="row" spacing={2} justifyContent="flex-end" sx={{ mt: 4 }}>
-          <Button type="button" variant="outlined" onClick={handleReset}>
+          <Button 
+            type="button" 
+            variant="outlined" 
+            onClick={handleReset}
+            disabled={!isModified}
+          >
             Reset
           </Button>
-          <Button type="submit" variant="contained" color="primary">
+          <Button 
+            type="submit" 
+            variant="contained" 
+            color="primary"
+            disabled={!isModified}
+          >
             Save Constraints
           </Button>
         </Stack>

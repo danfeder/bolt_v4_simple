@@ -1,0 +1,44 @@
+.cli-container {
+  font-family: monospace;
+  max-height: 500px;
+  overflow-y: auto;
+  background-color: #1e1e1e;
+  color: #f0f0f0;
+  padding: 16px;
+  border-radius: 4px;
+}
+
+.cli-output {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.cli-output-line {
+  padding: 2px 0;
+}
+
+.cli-input-container {
+  display: flex;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.cli-input-container .MuiTextField-root {
+  flex-grow: 1;
+  margin-right: 8px;
+}
+
+.cli-input-container .MuiTextField-root .MuiInputBase-root {
+  font-family: monospace;
+  color: #f0f0f0;
+}
+
+.cli-input-container .MuiTextField-root .MuiOutlinedInput-notchedOutline {
+  border-color: #555;
+}
+
+.cli-prompt {
+  color: #4caf50;
+  margin-right: 8px;
+  font-weight: bold;
+}

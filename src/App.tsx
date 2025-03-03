@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Container, Typography, Box, Paper, Grid, Tabs, Tab } from '@mui/material';
+import { Container, Typography, Box, Tabs, Tab } from '@mui/material';
 import SchedulerCLI from './components/SchedulerCLI';
 import ConstraintInputForm from './components/ConstraintInputForm';
+import ConstraintSetManager from './components/ConstraintSetManager';
 import { SchedulingConstraints } from './models/types';
 import { dataUtils } from './utils/dataUtils';
 
@@ -18,7 +19,7 @@ function App() {
     }
   }, []);
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
   };
 
@@ -42,6 +43,7 @@ function App() {
         <Box sx={{ borderBottom: 1, borderColor: 'divider', mt: 4 }}>
           <Tabs value={activeTab} onChange={handleTabChange} centered>
             <Tab label="Constraints" />
+            <Tab label="Saved Sets" />
             <Tab label="CLI" />
           </Tabs>
         </Box>
@@ -53,7 +55,19 @@ function App() {
               initialConstraints={constraints || undefined}
             />
           }
-          {activeTab === 1 && <SchedulerCLI />}
+          {activeTab === 1 && 
+            <ConstraintSetManager 
+              currentConstraints={constraints}
+              onLoad={(loadedConstraints) => {
+                setConstraints(loadedConstraints);
+                // Also save as current constraints
+                dataUtils.saveConstraints(loadedConstraints);
+                // Switch to constraints tab to show the loaded constraints
+                setActiveTab(0);
+              }}
+            />
+          }
+          {activeTab === 2 && <SchedulerCLI />}
         </Box>
       </Box>
     </Container>

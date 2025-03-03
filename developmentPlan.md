@@ -139,9 +139,9 @@ Build a lean, user-friendly scheduling tool that:
 - **Task 2.5:** Integrate the scheduling engine with a basic API/CLI for testing (all running in the browser). *(Completed)*
 
 ### Phase 3: Build the GUI and Constraint Input Module
-- **Task 3.1:** Develop the constraint input form.
+- **Task 3.1:** Develop the constraint input form. *(Completed)*
   - Include fields for hard constraints (prep schedules, personal conflicts, rotation dates, limits) and soft constraints (preferences).
-- **Task 3.2:** Implement save/load functionality for constraint sets.
+- **Task 3.2:** Implement save/load functionality for constraint sets. *(Completed)*
 - **Task 3.3:** Create the weekly schedule dashboard view.
   - Display a calendar view for Monday–Friday, 8 periods/day, with navigation controls.
 
