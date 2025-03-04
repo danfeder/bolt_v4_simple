@@ -1,9 +1,65 @@
-# User Testing Plan: Gym Class Rotation Scheduler
+# Gym Class Rotation Scheduler - User Testing Plan
 
 **Date:** March 3, 2025  
 **Version:** 1.2
 
 ---
+
+## Testing Documentation
+
+This project implements a structured approach to user testing, feedback collection, and implementation tracking using three interlinked documents:
+
+### Documentation System
+
+1. **[userTestingPlan.md](./userTestingPlan.md)** (this document)
+   - **Purpose**: Serves as the master plan and central reference for the testing process
+   - **Contains**: Testing objectives, methodology, detailed test scenarios, and current progress
+   - **When to use**: Start here to understand the overall testing approach and current status
+
+2. **[user-testing-feedback.md](./user-testing-feedback.md)**
+   - **Purpose**: Captures all raw feedback and observations from testing sessions
+   - **Contains**: Organized findings by test scenario, with issues, recommendations, and user preferences
+   - **When to use**: Review this to understand specific problems identified during testing
+
+3. **[testing-implementation-tasks.md](./testing-implementation-tasks.md)**
+   - **Purpose**: Converts feedback into prioritized, actionable development tasks
+   - **Contains**: Detailed tasks with priority levels, implementation notes, and current status
+   - **When to use**: Reference this for development planning and implementation tracking
+
+### How the System Works
+
+```
+┌─────────────────────┐     ┌──────────────────────┐     ┌────────────────────────┐
+│                     │     │                      │     │                        │
+│  userTestingPlan.md │────▶│ user-testing-        │────▶│ testing-               │
+│  (Define scenarios) │     │ feedback.md          │     │ implementation-        │
+│                     │     │ (Document findings)   │     │ tasks.md              │
+└─────────────────────┘     └──────────────────────┘     │ (Create tasks)         │
+          ▲                                               │                        │
+          │                                               │                        │
+          └───────────────────────────────────────────────┘                        │
+                      (Update status after implementation)                         │
+                                                                                   │
+                                                                                   ▼
+                                                          ┌────────────────────────┐
+                                                          │                        │
+                                                          │ Implementation         │
+                                                          │ (Actual code changes)  │
+                                                          │                        │
+                                                          └────────────────────────┘
+```
+
+### Current Status at a Glance
+
+- **Testing Round**: 1 (in progress)
+- **Critical Issues**: Weekly Schedule Dashboard redesign, schedule model enhancement, CLI-UI integration
+- **Implementation Status**: See the [Testing Status](#testing-status) section below for details
+- **Next Round**: Planned after addressing critical issues from Round 1
+
+For developers new to this project, we recommend:
+1. Review the test scenarios in this document to understand what's being tested
+2. Check the current testing status to see what's completed and what issues were found
+3. Consult the implementation tasks document to see what needs to be worked on next
 
 ## Introduction
 
@@ -169,6 +225,12 @@ At the end of testing, I'll ask for your feedback on:
 - Any missing functionality you would expect
 - Your overall satisfaction with the application
 
+### D. Feedback Documentation
+- All feedback is systematically documented in the [user-testing-feedback.md](./user-testing-feedback.md) file
+- This document captures issues, observations, and suggestions organized by test scenario
+- The feedback document will be used to prioritize improvements after each testing round
+- Each issue will be tracked from identification through resolution
+
 ---
 
 ## 5. Success Criteria
@@ -259,6 +321,59 @@ At the end of testing, I'll ask for your feedback on:
 - Provide specific feedback about pain points
 - Suggest improvements based on your experience
 - In later rounds, evaluate whether previous issues have been resolved
+
+---
+
+## Feedback Documentation and Tracking
+
+We will create a dedicated document to track all feedback, issues, and suggestions from user testing. This document will be used to prioritize work after each testing round.
+
+See the [user-testing-feedback.md](./user-testing-feedback.md) document for detailed feedback from testing sessions.
+
+## Testing Status
+
+### Round 1 (Current)
+
+- **Scenario A1**: Basic Constraint Entry - COMPLETED
+  - Personal conflicts calendar working well
+  - Hard constraints interface is intuitive and functional
+  - Issue identified with max consecutive periods (needs to be limited to 0-2)
+
+- **Scenario A2**: Soft Constraint Configuration - COMPLETED
+  - Balance schedule switch purpose is unclear
+  - Teacher preferences should be moved to Class Manager
+
+- **Scenario B1**: Schedule Navigation - COMPLETED (BLOCKED)
+  - Weekly Schedule Dashboard doesn't display generated schedules
+  - RE-OPTIMIZE button is inactive
+  - Integration issue between CLI and UI
+
+- **Scenario B2**: Schedule Information Comprehension - COMPLETED (PARTIAL)
+  - Schedule format in CLI is limited to weekday-based rather than calendar date-based
+  - Missing rotation functionality for multiple weeks
+
+- **Scenario D1**: Complete Schedule Generation Workflow - COMPLETED (PARTIAL)
+  - Schedule generation works in CLI but not reflected in UI
+  - Generated schedule lacks calendar date integration
+
+### Round 2 (Planned)
+
+After addressing the critical issues identified in Round 1, we will focus on:
+
+- **Scenario C1**: Data Import/Export - Test importing class data and exporting generated schedules
+- **Scenario C2**: Schedule Management - Test saving, loading, and comparing multiple schedule rotations
+- **Reworked Schedule Dashboard** - Test the redesigned calendar-based schedule view
+- **Reworked Class Manager** - Test the new interactive constraint selection interface
+
+## Next Steps
+
+1. Implement critical fixes identified during Round 1
+   - Rework the Weekly Schedule Dashboard with calendar-based view
+   - Enhance schedule generation to work with actual calendar dates
+   - Fix integration between CLI and UI components
+   - Redesign Class Manager with interactive constraint selection
+   
+2. Conduct Round 2 testing with the improved interface
 
 ---
 
