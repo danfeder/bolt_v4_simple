@@ -1,4 +1,5 @@
 import { Day, Period, TimeSlot } from '../models/types';
+import { format, isSameDay } from 'date-fns';
 
 /**
  * Generates all possible time slots for a week (Monday-Friday, periods 1-8)
@@ -33,15 +34,23 @@ export function generateAllTimeSlots(): TimeSlot[] {
  * @returns True if time slots are equal
  */
 export function areTimeSlotsEqual(a: TimeSlot, b: TimeSlot): boolean {
+  // If both have dates, compare dates
+  if (a.date && b.date) {
+    return isSameDay(a.date, b.date) && a.period === b.period;
+  }
+  // Otherwise fall back to day comparison
   return a.day === b.day && a.period === b.period;
 }
 
 /**
  * Formats a time slot as a string
  * @param timeSlot Time slot to format
- * @returns Formatted string (e.g., "Monday, Period 3")
+ * @returns Formatted string (e.g., "Monday, Period 3" or "Mar 15, 2025, Period 3")
  */
 export function formatTimeSlot(timeSlot: TimeSlot): string {
+  if (timeSlot.date) {
+    return `${format(timeSlot.date, 'MMM d, yyyy')}, Period ${timeSlot.period}`;
+  }
   return `${timeSlot.day}, Period ${timeSlot.period}`;
 }
 
@@ -50,36 +59,41 @@ export function formatTimeSlot(timeSlot: TimeSlot): string {
  * @param assignments Array of time slots representing class assignments
  * @returns Maximum number of consecutive periods
  */
-export function calculateConsecutivePeriods(timeSlots: TimeSlot[]): number {
+export function calculateConsecutivePeriods(assignments: TimeSlot[]): number {
   // Group by day
-  const slotsByDay = timeSlots.reduce<Record<Day, Period[]>>((acc, slot) => {
-    if (!acc[slot.day]) {
-      acc[slot.day] = [];
+  const byDay: { [key: string]: Period[] } = {};
+  
+  for (const assignment of assignments) {
+    // Use date if available, otherwise use day
+    const dayKey = assignment.date ? format(assignment.date, 'yyyy-MM-dd') : assignment.day;
+    
+    if (!byDay[dayKey]) {
+      byDay[dayKey] = [];
     }
-    acc[slot.day].push(slot.period);
-    return acc;
-  }, {} as Record<Day, Period[]>);
-
-  // For each day, find the maximum consecutive periods
+    
+    byDay[dayKey].push(assignment.period);
+  }
+  
   let maxConsecutive = 0;
   
-  Object.values(slotsByDay).forEach(periods => {
-    periods.sort((a, b) => a - b);
-    
-    let current = 1;
-    let max = 1;
+  // For each day, calculate consecutive periods
+  for (const day in byDay) {
+    const periods = byDay[day].sort((a, b) => a - b);
+    let currentStreak = 1;
+    let maxStreak = 1;
     
     for (let i = 1; i < periods.length; i++) {
       if (periods[i] === periods[i - 1] + 1) {
-        current++;
+        currentStreak++;
       } else {
-        current = 1;
+        currentStreak = 1;
       }
-      max = Math.max(max, current);
+      
+      maxStreak = Math.max(maxStreak, currentStreak);
     }
     
-    maxConsecutive = Math.max(maxConsecutive, max);
-  });
+    maxConsecutive = Math.max(maxConsecutive, maxStreak);
+  }
   
   return maxConsecutive;
 }

@@ -1,4 +1,6 @@
 import { Day, Period, Class, TimeSlot, Schedule, Assignment } from '../models/types';
+import { areTimeSlotsEqual } from './timeSlot';
+import { isSameDay } from 'date-fns';
 
 /**
  * Utility functions for drag and drop operations in the schedule
@@ -28,10 +30,20 @@ export const validateClassMove = (
     conflictDescription?: string;
   }
 } => {
+  // Create a target time slot to check against
+  const targetTimeSlot: TimeSlot = { day: targetDay, period: targetPeriod };
+  
   // Check if there's already a class in this time slot
-  const existingAssignment = schedule.assignments.find(
-    a => a.timeSlot.day === targetDay && a.timeSlot.period === targetPeriod
-  );
+  const existingAssignment = schedule.assignments.find(a => {
+    const timeSlot = a.timeSlot;
+    // Use date if available, otherwise compare day
+    if (timeSlot.date) {
+      return timeSlot.period === targetPeriod && 
+        ((targetTimeSlot.date && isSameDay(timeSlot.date, targetTimeSlot.date)) || 
+         timeSlot.day === targetDay);
+    }
+    return timeSlot.day === targetDay && timeSlot.period === targetPeriod;
+  });
   
   if (existingAssignment) {
     // Get the existing class name for better feedback
@@ -59,9 +71,13 @@ export const validateClassMove = (
   }
   
   // Check if this time slot conflicts with the class's conflicts
-  const hasConflict = classObj.conflicts.some(
-    conflict => conflict.day === targetDay && conflict.period === targetPeriod
-  );
+  const hasConflict = classObj.conflicts.some(conflict => {
+    // Use date if available, otherwise compare day
+    if (conflict.date && targetTimeSlot.date) {
+      return conflict.period === targetPeriod && isSameDay(conflict.date, targetTimeSlot.date);
+    }
+    return conflict.day === targetDay && conflict.period === targetPeriod;
+  });
   
   if (hasConflict) {
     return { 
@@ -108,10 +124,9 @@ export const moveClassInSchedule = (
   // Add the new assignment
   newAssignments.push({
     classId,
-    timeSlot: targetTimeSlot
+    timeSlot: { ...targetTimeSlot }
   });
   
-  // Create updated schedule
   return {
     ...schedule,
     assignments: newAssignments
@@ -135,19 +150,12 @@ export const getDropTooltip = (
   }
 ): string => {
   if (isValid) {
-    return 'Drop here to move class to this time slot';
+    return 'Drop here to assign class to this time slot';
   }
   
   if (conflictDetails) {
-    switch (conflictDetails.type) {
-      case 'OCCUPIED':
-        return `Cannot place class here: ${conflictDetails.conflictDescription}`;
-      case 'CLASS_CONFLICT':
-        return `Cannot place class here: ${conflictDetails.conflictDescription}`;
-      default:
-        return reason || 'Cannot move class to this time slot';
-    }
+    return conflictDetails.conflictDescription || reason || 'Invalid time slot';
   }
   
-  return reason || 'Cannot move class to this time slot';
+  return reason || 'Cannot assign class to this time slot';
 };

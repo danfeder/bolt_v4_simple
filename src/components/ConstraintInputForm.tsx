@@ -12,7 +12,7 @@ import {
 } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { HardConstraints, SoftConstraints, SchedulingConstraints } from '../models/types';
+import { HardConstraints, SoftConstraints, SchedulingConstraints, TimeSlot } from '../models/types';
 import HardConstraintsSection from './HardConstraintsSection';
 import SoftConstraintsSection from './SoftConstraintsSection';
 import PersonalConflictsSection from './PersonalConflictsSection';
@@ -89,7 +89,7 @@ const ConstraintInputForm: React.FC<ConstraintInputFormProps> = ({
   };
 
   // Update personal conflicts
-  const handlePersonalConflictsChange = (conflicts: any[]) => {
+  const handlePersonalConflictsChange = (conflicts: TimeSlot[]) => {
     setHardConstraints({
       ...hardConstraints,
       personalConflicts: conflicts

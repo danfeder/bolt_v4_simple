@@ -188,7 +188,15 @@ Build a lean, user-friendly scheduling tool that:
     - Rotation history functionality (save, retrieve)
   - Tested component-to-API interactions to ensure proper integration
   - All tests are passing, verifying proper integration between frontend and API
-- **Task 7.3:** Perform user testing of the GUI (constraint input, schedule display, manual adjustments).
+- **Task 7.3:** Perform user testing of the GUI (constraint input, schedule display, manual adjustments). *(In Progress)*
+  - Enhanced the PersonalConflictsSection component to use a calendar view instead of generic weekdays
+  - Implemented 5-day week calendar grid for selecting specific dates for conflicts
+  - Updated TimeSlot data structure to include a specific date field for more accurate conflict tracking
+  - Modified utility functions to support both date-specific and general day-of-week conflicts
+  - Additional testing needed for:
+    - Schedule display functionality
+    - Manual adjustment capabilities
+    - Drag-and-drop interactions
 - **Task 7.4:** Validate file upload/edit functionality and CSV export accuracy.
 
 ### Phase 8: Finalization and Documentation

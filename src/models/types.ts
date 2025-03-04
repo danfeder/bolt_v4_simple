@@ -18,6 +18,7 @@ export type Period = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export interface TimeSlot {
   day: Day;
   period: Period;
+  date?: Date; // Add date field for calendar-specific conflicts
 }
 
 // Class definition
