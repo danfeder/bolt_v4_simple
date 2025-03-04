@@ -189,6 +189,11 @@ Build a lean, user-friendly scheduling tool that:
   - Tested component-to-API interactions to ensure proper integration
   - All tests are passing, verifying proper integration between frontend and API
 - **Task 7.3:** Perform user testing of the GUI (constraint input, schedule display, manual adjustments).
+  - Created comprehensive [User Testing Plan](./userTestingPlan.md) with detailed test scenarios
+  - Testing focuses on three key areas: Constraint Input, Schedule Display, and Manual Adjustments
+  - Plan includes both technical and non-technical user perspectives
+  - Structured approach with clear success criteria and metrics
+  - Includes data collection methods and reporting framework
 - **Task 7.4:** Validate file upload/edit functionality and CSV export accuracy.
 
 ### Phase 8: Finalization and Documentation
