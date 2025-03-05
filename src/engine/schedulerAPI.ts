@@ -9,13 +9,12 @@ import {
   Assignment
 } from '../models/types';
 import { dataUtils } from '../utils/dataUtils';
-
-// Helper to detect if we're in a test environment
-const isTestEnv = (): boolean => {
-  return typeof process !== 'undefined' && 
-         process.env !== undefined && 
-         process.env.NODE_ENV === 'test';
-};
+import { isTestEnv } from '../utils/testing';
+import { 
+  enhanceAssignmentsWithDates, 
+  organizeScheduleIntoWeeks,
+  createScheduleForDateRange
+} from '../utils/scheduleUtils';
 
 /**
  * API wrapper for the GymClassScheduler, providing a simplified interface
@@ -223,9 +222,6 @@ export class SchedulerAPI {
    * @returns The enhanced schedule
    */
   enhanceScheduleWithDates(schedule: Schedule): Schedule {
-    // Import necessary utilities from scheduleUtils
-    const { enhanceAssignmentsWithDates, organizeScheduleIntoWeeks } = require('../utils/scheduleUtils');
-    
     // First enhance all assignments with dates
     const withDates = enhanceAssignmentsWithDates(schedule);
     
@@ -243,9 +239,6 @@ export class SchedulerAPI {
     if (!this.currentSchedule) {
       throw new Error('No current schedule to extend');
     }
-    
-    // Import createScheduleForDateRange from scheduleUtils
-    const { createScheduleForDateRange } = require('../utils/scheduleUtils');
     
     // Create a new schedule for the specified date range
     const newSchedule = createScheduleForDateRange(
