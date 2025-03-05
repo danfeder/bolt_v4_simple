@@ -223,10 +223,16 @@ export class SchedulerAPI {
    */
   enhanceScheduleWithDates(schedule: Schedule): Schedule {
     // First enhance all assignments with dates
-    const withDates = enhanceAssignmentsWithDates(schedule);
+    const withDates = enhanceAssignmentsWithDates(schedule.assignments, schedule.startDate);
+    
+    // Create a new schedule with the enhanced assignments
+    const enhancedSchedule = {
+      ...schedule,
+      assignments: withDates
+    };
     
     // Then organize into weeks
-    return organizeScheduleIntoWeeks(withDates);
+    return organizeScheduleIntoWeeks(enhancedSchedule);
   }
   
   /**

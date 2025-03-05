@@ -8,7 +8,8 @@ export enum Day {
   TUESDAY = 'Tuesday',
   WEDNESDAY = 'Wednesday',
   THURSDAY = 'Thursday',
-  FRIDAY = 'Friday'
+  FRIDAY = 'Friday',
+  UNASSIGNED = 'Unassigned'
 }
 
 // Period definition (1-8)

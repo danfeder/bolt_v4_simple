@@ -22,7 +22,7 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { startOfWeek, addDays, format, isSameDay } from 'date-fns';
+import { startOfWeek, addDays, format, isSameDay, parseISO } from 'date-fns';
 import { TimeSlot, Day, Period } from '../models/types';
 
 interface PersonalConflictsSectionProps {
@@ -66,7 +66,7 @@ const PersonalConflictsSection: React.FC<PersonalConflictsSectionProps> = ({
 
   // Toggle a period selection for a specific date
   const togglePeriodSelection = (date: Date, period: Period) => {
-    const dateKey = format(date, 'yyyy-MM-dd');
+    const dateKey = format(typeof date === 'string' ? parseISO(date) : date, 'yyyy-MM-dd');
     const currentPeriods = selectedPeriods[dateKey] || [];
     
     setSelectedPeriods(prev => {
@@ -104,9 +104,13 @@ const PersonalConflictsSection: React.FC<PersonalConflictsSectionProps> = ({
         };
         
         // Check if conflict already exists
-        const conflictExists = conflicts.some(
-          c => c.date && isSameDay(c.date, date) && c.period === period
-        );
+        const conflictExists = conflicts.some(c => {
+          if (!c.date) return false;
+          // Ensure we're working with Date objects
+          const conflictDate = typeof c.date === 'string' ? parseISO(c.date) : c.date;
+          const dateToCompare = typeof date === 'string' ? parseISO(date) : date;
+          return isSameDay(conflictDate, dateToCompare) && c.period === period;
+        });
         
         if (!conflictExists) {
           newConflicts.push(newConflict);
@@ -135,13 +139,19 @@ const PersonalConflictsSection: React.FC<PersonalConflictsSectionProps> = ({
 
   // Check if a specific date and period are selected
   const isPeriodSelected = (date: Date, period: Period): boolean => {
-    const dateKey = format(date, 'yyyy-MM-dd');
+    const dateKey = format(typeof date === 'string' ? parseISO(date) : date, 'yyyy-MM-dd');
     return selectedPeriods[dateKey]?.includes(period) || false;
   };
 
   // Check if a specific date and period are in conflicts
   const isConflict = (date: Date, period: Period): boolean => {
-    return conflicts.some(c => c.date && isSameDay(c.date, date) && c.period === period);
+    return conflicts.some(c => {
+      if (!c.date) return false;
+      // Ensure we're working with Date objects
+      const conflictDate = typeof c.date === 'string' ? parseISO(c.date) : c.date;
+      const targetDate = typeof date === 'string' ? parseISO(date) : date;
+      return isSameDay(conflictDate, targetDate) && c.period === period;
+    });
   };
 
   return (
@@ -162,7 +172,7 @@ const PersonalConflictsSection: React.FC<PersonalConflictsSectionProps> = ({
           slotProps={{ textField: { size: 'small', sx: { mr: 2 } } }}
         />
         <Typography variant="body1">
-          Week of {format(weekStart, 'MMM d, yyyy')}
+          Week of {format(typeof weekStart === 'string' ? parseISO(weekStart) : weekStart, 'MMM d, yyyy')}
         </Typography>
       </Box>
 
@@ -174,8 +184,8 @@ const PersonalConflictsSection: React.FC<PersonalConflictsSectionProps> = ({
               <TableCell width="100">Period</TableCell>
               {weekDays.map((day) => (
                 <TableCell key={day.toISOString()} align="center">
-                  {format(day, 'EEE')}<br />
-                  {format(day, 'MMM d')}
+                  {format(typeof day === 'string' ? parseISO(day) : day, 'EEE')}<br />
+                  {format(typeof day === 'string' ? parseISO(day) : day, 'MMM d')}
                 </TableCell>
               ))}
             </TableRow>
@@ -246,7 +256,12 @@ const PersonalConflictsSection: React.FC<PersonalConflictsSectionProps> = ({
               {conflicts.map((conflict, index) => (
                 <TableRow key={`conflict-${index}`}>
                   <TableCell>
-                    {conflict.date ? format(conflict.date, 'MMM d, yyyy') : 'N/A'}
+                    {conflict.date 
+                      ? format(
+                          typeof conflict.date === 'string' ? parseISO(conflict.date) : conflict.date,
+                          'MMM d, yyyy'
+                        ) 
+                      : 'N/A'}
                   </TableCell>
                   <TableCell>{conflict.day}</TableCell>
                   <TableCell>Period {conflict.period}</TableCell>

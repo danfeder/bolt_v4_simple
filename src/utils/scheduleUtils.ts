@@ -1,42 +1,43 @@
 import { 
-  Schedule, 
-  TimeSlot, 
-  Day, 
-  Period, 
-  Assignment, 
-  RotationWeek,
-  DateRange
-} from '../models/types';
-import { 
   addDays, 
-  differenceInDays, 
-  eachDayOfInterval, 
-  endOfWeek, 
   getDay, 
   isSameDay, 
-  startOfWeek 
+  startOfWeek, 
+  endOfWeek, 
+  format, 
+  isWithinInterval 
 } from 'date-fns';
+import { 
+  Schedule, 
+  Assignment, 
+  TimeSlot, 
+  RotationWeek, 
+  Day 
+} from '../models/types';
 
 /**
  * Maps JavaScript day numbers (0-6, starting with Sunday) to our Day enum
  */
-const dayNumberToEnum: Record<number, Day> = {
-  1: Day.MONDAY,
-  2: Day.TUESDAY,
-  3: Day.WEDNESDAY,
-  4: Day.THURSDAY,
-  5: Day.FRIDAY
+const dayNumberToEnum: Record<number, Day | undefined> = {
+  0: undefined, // Sunday - not in our school week
+  1: "Monday" as Day,
+  2: "Tuesday" as Day,
+  3: "Wednesday" as Day,
+  4: "Thursday" as Day,
+  5: "Friday" as Day,
+  6: undefined, // Saturday - not in our school week
 };
 
 /**
- * Maps our Day enum to JavaScript day numbers
+ * Maps our Day enum values to JavaScript day numbers (0-6, starting with Sunday)
  */
 const dayEnumToNumber: Record<Day, number> = {
-  [Day.MONDAY]: 1,
-  [Day.TUESDAY]: 2,
-  [Day.WEDNESDAY]: 3,
-  [Day.THURSDAY]: 4,
-  [Day.FRIDAY]: 5
+  "Monday": 1,
+  "Tuesday": 2,
+  "Wednesday": 3,
+  "Thursday": 4,
+  "Friday": 5,
+  "Unassigned": -1, // Use -1 to indicate unassigned
 };
 
 /**
@@ -53,215 +54,179 @@ export function dateToDay(date: Date): Day | undefined {
  * Gets the corresponding date for a specific day within a week
  * @param startDate The start date of the week (typically a Monday)
  * @param day The day to get the date for
- * @returns The Date object for the specified day
+ * @returns The date for the specified day
  */
 export function getDayDate(startDate: Date, day: Day): Date {
+  if (day === "Unassigned") {
+    return new Date(0); // Return epoch time for unassigned days
+  }
   const dayOffset = dayEnumToNumber[day] - 1; // -1 because we start from Monday (offset 0)
   return addDays(startDate, dayOffset);
 }
 
 /**
- * Organizes a schedule into rotation weeks
- * @param schedule The schedule to organize
- * @returns The schedule with populated weeks
+ * Get the Monday of the current week
+ * @param date A date within the week
+ * @returns The Monday of that week
  */
-export function organizeScheduleIntoWeeks(schedule: Schedule): Schedule {
+export const getWeekStart = (date: Date): Date => {
+  return startOfWeek(date, { weekStartsOn: 1 }); // 1 = Monday
+};
+
+/**
+ * Get the Friday of the current week
+ * @param date A date within the week
+ * @returns The Friday of that week
+ */
+export const getWeekEnd = (date: Date): Date => {
+  const end = endOfWeek(date, { weekStartsOn: 1 }); // Sunday
+  return addDays(end, -2); // Go back 2 days to Friday
+};
+
+/**
+ * Format a date as MM/DD/YYYY
+ * @param date The date to format
+ * @returns Formatted date string
+ */
+export const formatDateFull = (date: Date): string => {
+  return format(date, 'MM/dd/yyyy');
+};
+
+/**
+ * Organize a schedule into weekly rotations
+ * @param schedule The schedule to organize
+ * @returns Array of RotationWeek objects
+ */
+export const organizeScheduleIntoWeeks = (schedule: Schedule): RotationWeek[] => {
   if (!schedule.startDate) {
-    throw new Error('Schedule must have a start date to organize into weeks');
+    console.error('Schedule must have a start date');
+    return [];
   }
-
-  // Clone the schedule to avoid mutating the original
-  const result: Schedule = { ...schedule };
   
-  // Determine the end date based on assignments if not provided
-  if (!result.endDate) {
-    // Find the latest date in assignments or default to 2 weeks
-    const latestDate = getLatestDateFromAssignments(schedule.assignments, schedule.startDate);
-    result.endDate = latestDate;
-  }
-
-  // Calculate the number of weeks in the rotation
-  const startOfFirstWeek = startOfWeek(result.startDate, { weekStartsOn: 1 }); // 1 = Monday
-  const endOfLastWeek = endOfWeek(result.endDate, { weekStartsOn: 1 });
+  // Use specified number of weeks or default to 1
+  const numberOfWeeks = schedule.numberOfWeeks || 1;
+  const weeks: RotationWeek[] = [];
   
-  const totalDays = differenceInDays(endOfLastWeek, startOfFirstWeek) + 1;
-  const numberOfWeeks = Math.ceil(totalDays / 7);
-  
-  result.numberOfWeeks = numberOfWeeks;
-  result.weeks = [];
-
-  // Create week objects and populate with assignments
   for (let i = 0; i < numberOfWeeks; i++) {
-    const weekStartDate = addDays(startOfFirstWeek, i * 7);
-    const weekEndDate = i === numberOfWeeks - 1 
-      ? endOfLastWeek 
-      : addDays(weekStartDate, 6);
+    const weekStartDate = addDays(new Date(schedule.startDate), i * 7);
+    const weekEndDate = addDays(weekStartDate, 4); // Monday to Friday
     
-    // Get assignments for this week
-    const weekAssignments = getAssignmentsForDateRange(schedule.assignments, {
-      startDate: weekStartDate,
-      endDate: weekEndDate
-    });
-    
-    result.weeks.push({
+    weeks.push({
       weekNumber: i + 1,
       startDate: weekStartDate,
       endDate: weekEndDate,
-      assignments: weekAssignments
+      assignments: [] // Will populate with assignments in this week's date range
     });
   }
   
-  return result;
-}
-
-/**
- * Gets assignments that fall within a specific date range
- * @param assignments All assignments
- * @param dateRange The date range to filter by
- * @returns Assignments within the specified date range
- */
-export function getAssignmentsForDateRange(
-  assignments: Assignment[], 
-  dateRange: DateRange
-): Assignment[] {
-  return assignments.filter(assignment => {
-    // If the assignment has a date, check if it falls within the range
-    if (assignment.timeSlot.date) {
-      return (
-        assignment.timeSlot.date >= dateRange.startDate && 
-        assignment.timeSlot.date <= dateRange.endDate
-      );
-    }
-    
-    // If it only has a day, we need to check if any date with that day falls within the range
-    const day = assignment.timeSlot.day;
-    
-    // Get all dates in the range
-    const allDates = eachDayOfInterval({
-      start: dateRange.startDate,
-      end: dateRange.endDate
-    });
-    
-    // Check if any of these dates corresponds to the assignment's day
-    return allDates.some(date => {
-      const dateDay = dateToDay(date);
-      return dateDay === day;
-    });
-  });
-}
-
-/**
- * Gets the latest date from a set of assignments or defaults to 2 weeks from start
- * @param assignments All assignments in the schedule
- * @param startDate The schedule start date
- * @returns The latest date in the assignments or 2 weeks from start
- */
-export function getLatestDateFromAssignments(assignments: Assignment[], startDate: Date): Date {
-  let latestDate = addDays(startDate, 14); // Default to 2 weeks
-  
-  // Check if any assignments have dates later than our default
-  for (const assignment of assignments) {
-    if (assignment.timeSlot.date && assignment.timeSlot.date > latestDate) {
-      latestDate = assignment.timeSlot.date;
-    }
-  }
-  
-  return latestDate;
-}
-
-/**
- * Enhances assignments with dates based on the schedule's start date
- * @param schedule The schedule to enhance
- * @returns The enhanced schedule with dates added to assignments
- */
-export function enhanceAssignmentsWithDates(schedule: Schedule): Schedule {
-  if (!schedule.startDate) {
-    throw new Error('Schedule must have a start date to enhance assignments');
-  }
-  
-  // Clone the schedule to avoid mutating the original
-  const result: Schedule = { 
-    ...schedule,
-    assignments: [...schedule.assignments]
-  };
-  
-  // Enhance each assignment with a date if it doesn't already have one
-  result.assignments = result.assignments.map(assignment => {
-    if (!assignment.timeSlot.date) {
-      // Clone the assignment to avoid mutating the original
-      const enhancedAssignment: Assignment = {
-        ...assignment,
-        timeSlot: {
-          ...assignment.timeSlot,
-          date: getDayDate(schedule.startDate, assignment.timeSlot.day)
+  // Populate assignments into weeks
+  if (schedule.assignments && Array.isArray(schedule.assignments)) {
+    schedule.assignments.forEach(assignment => {
+      if (assignment.timeSlot.date) {
+        const assignmentDate = new Date(assignment.timeSlot.date);
+        
+        // Find the week this assignment belongs to
+        const weekIndex = weeks.findIndex(week => 
+          isWithinInterval(assignmentDate, {
+            start: week.startDate,
+            end: week.endDate
+          })
+        );
+        
+        if (weekIndex !== -1) {
+          weeks[weekIndex].assignments.push(assignment);
         }
-      };
-      return enhancedAssignment;
+      } else {
+        // For assignments without dates, distribute across all weeks
+        weeks.forEach(week => {
+          if (week.weekNumber >= 1 && week.weekNumber <= weeks.length) {
+            weeks[week.weekNumber - 1].assignments.push(assignment);
+          }
+        });
+      }
+    });
+  }
+  
+  return weeks;
+};
+
+/**
+ * Enhance a schedule by adding dates to assignments
+ * @param schedule The original schedule to enhance
+ * @returns A new schedule with date-enhanced assignments
+ */
+export const enhanceScheduleWithDates = (schedule: Schedule): Schedule => {
+  if (!schedule.startDate) {
+    console.error('Schedule must have a start date');
+    return schedule;
+  }
+  
+  const enhancedAssignments = schedule.assignments.map(assignment => {
+    // Skip if the assignment already has a date
+    if (assignment.timeSlot.date) {
+      return assignment;
     }
-    return assignment;
+    
+    const { day, period } = assignment.timeSlot;
+    const date = getDayDate(new Date(schedule.startDate), day as Day);
+    
+    return {
+      ...assignment,
+      timeSlot: {
+        ...assignment.timeSlot,
+        date
+      }
+    };
   });
   
-  return result;
-}
+  return {
+    ...schedule,
+    assignments: enhancedAssignments
+  };
+};
 
 /**
- * Determines if a date falls on a school day (Monday-Friday)
- * @param date The date to check
- * @returns True if the date is a school day, false otherwise
+ * Enhances an array of assignments with dates based on a start date
+ * @param assignments Array of assignments to enhance with dates
+ * @param startDate The start date to use as reference
+ * @returns Array of assignments with added date properties
  */
-export function isSchoolDay(date: Date): boolean {
-  const day = getDay(date);
-  return day >= 1 && day <= 5; // 1 = Monday, 5 = Friday
-}
+export const enhanceAssignmentsWithDates = (assignments: Assignment[], startDate: Date): Assignment[] => {
+  return assignments.map(assignment => {
+    // Skip if the assignment already has a date
+    if (assignment.timeSlot.date) {
+      return assignment;
+    }
+    
+    const { day } = assignment.timeSlot;
+    const date = getDayDate(new Date(startDate), day as Day);
+    
+    return {
+      ...assignment,
+      timeSlot: {
+        ...assignment.timeSlot,
+        date
+      }
+    };
+  });
+};
 
 /**
- * Creates a full schedule for a specific duration, starting from a given date
- * @param baseSchedule The base schedule to replicate
- * @param startDate The start date for the new schedule
- * @param endDate Optional end date (defaults to 4 weeks from start)
- * @returns A new schedule covering the specified date range
+ * Create a schedule for a specific date range
+ * @param startDate The start date of the schedule
+ * @param endDate Optional end date (defaults to 5 days after start date)
+ * @returns A new empty schedule with the specified date range
  */
-export function createScheduleForDateRange(
-  baseSchedule: Schedule, 
-  startDate: Date,
-  endDate: Date = addDays(startDate, 28) // Default to 4 weeks
-): Schedule {
-  // Create a new schedule
-  const newSchedule: Schedule = {
+export const createScheduleForDateRange = (startDate: Date, endDate?: Date): Schedule => {
+  const calculatedEndDate = endDate || addDays(startDate, 4); // Default to 5-day week (Mon-Fri)
+  const daysDiff = Math.ceil((calculatedEndDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  const numberOfWeeks = Math.ceil(daysDiff / 7);
+  
+  return {
+    id: `schedule-${Date.now()}`,
     assignments: [],
     startDate,
-    endDate,
-    fitness: baseSchedule.fitness,
-    hardConstraintViolations: baseSchedule.hardConstraintViolations,
-    softConstraintSatisfaction: baseSchedule.softConstraintSatisfaction
+    endDate: calculatedEndDate,
+    numberOfWeeks
   };
-  
-  // Get all school days in the range
-  const schoolDays = eachDayOfInterval({ start: startDate, end: endDate })
-    .filter(isSchoolDay);
-  
-  // For each school day, add the appropriate assignments
-  for (const date of schoolDays) {
-    const day = dateToDay(date);
-    if (!day) continue; // Skip if not a school day (though this shouldn't happen)
-    
-    // Find assignments for this day in the base schedule
-    const dayAssignments = baseSchedule.assignments.filter(a => a.timeSlot.day === day);
-    
-    // Create new assignments for this specific date
-    for (const assignment of dayAssignments) {
-      newSchedule.assignments.push({
-        classId: assignment.classId,
-        timeSlot: {
-          day,
-          period: assignment.timeSlot.period,
-          date,
-          isFixed: assignment.timeSlot.isFixed
-        }
-      });
-    }
-  }
-  
-  // Organize into weeks
-  return organizeScheduleIntoWeeks(newSchedule);
-}
+};

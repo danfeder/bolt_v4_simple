@@ -68,21 +68,19 @@ describe('Drag and Drop Utils', () => {
     it('should return invalid when target slot is occupied', () => {
       const result = validateClassMove(
         'class_1',
-        Day.TUESDAY,
-        3 as Period,
+        { day: Day.TUESDAY, period: 3 as Period },
         mockSchedule,
         mockClasses
       );
 
       expect(result.isValid).toBe(false);
-      expect(result.reason).toContain('already occupied');
+      expect(result.reason).toContain('occupied');
     });
 
     it('should return invalid when class has conflict in target slot', () => {
       const result = validateClassMove(
         'class_1',
-        Day.MONDAY,
-        1 as Period,
+        { day: Day.MONDAY, period: 1 as Period },
         mockSchedule,
         mockClasses
       );
@@ -94,8 +92,7 @@ describe('Drag and Drop Utils', () => {
     it('should return valid for an empty slot with no conflicts', () => {
       const result = validateClassMove(
         'class_1',
-        Day.WEDNESDAY,
-        1 as Period,
+        { day: Day.WEDNESDAY, period: 1 as Period },
         mockSchedule,
         mockClasses
       );
@@ -106,8 +103,7 @@ describe('Drag and Drop Utils', () => {
     it('should return invalid if class is not found', () => {
       const result = validateClassMove(
         'nonexistent_class',
-        Day.WEDNESDAY,
-        1 as Period,
+        { day: Day.WEDNESDAY, period: 1 as Period },
         mockSchedule,
         mockClasses
       );

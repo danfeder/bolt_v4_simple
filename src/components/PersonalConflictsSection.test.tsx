@@ -5,7 +5,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import PersonalConflictsSection from './PersonalConflictsSection';
 import { Day, TimeSlot, Period } from '../models/types';
 import userEvent from '@testing-library/user-event';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 
 // Wrap component with required providers
 const renderWithProviders = (ui: React.ReactElement) => {
@@ -43,7 +43,10 @@ describe('PersonalConflictsSection', () => {
     // Wait for the conflict list to be rendered
     await waitFor(() => {
       // Check that the conflict date is displayed in the conflicts table
-      expect(screen.getByText(format(today, 'MMM d, yyyy'))).toBeInTheDocument();
+      expect(screen.getByText(format(
+        typeof today === 'string' ? parseISO(today) : today,
+        'MMM d, yyyy'
+      ))).toBeInTheDocument();
       // Check that Day.MONDAY is shown in the table
       expect(screen.getByText(Day.MONDAY)).toBeInTheDocument();
     });

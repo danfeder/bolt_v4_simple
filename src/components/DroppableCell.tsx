@@ -1,98 +1,107 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDrop } from 'react-dnd';
 import { Box, Typography, Tooltip } from '@mui/material';
 import { ItemTypes, DragItem } from './DraggableClassItem';
-import { Day, Period, Class } from '../models/types';
-import { getDropTooltip, validateClassMove } from '../utils/dragDropUtils';
+import { TimeSlot } from '../models/types';
 
 interface DroppableCellProps {
-  day: Day;
-  period: Period;
-  children?: React.ReactNode;
-  onDrop: (item: DragItem, day: Day, period: Period) => void;
-  isValidDropTarget: (item: DragItem, day: Day, period: Period) => boolean;
+  timeSlot: TimeSlot;
   isEmpty: boolean;
-  classes?: Class[];
-  schedule?: any;
+  isValidDropTarget: (item: DragItem, timeSlot: TimeSlot) => boolean;
+  children?: React.ReactNode;
+  className?: string;
+  onDrop: (item: DragItem, timeSlot: TimeSlot) => void;
+  onHover?: (item: DragItem, timeSlot: TimeSlot) => void;
+  onValidationChange?: (isValid: boolean, reason?: string) => void;
+  validationResult?: { isValid: boolean; reason?: string; conflictDetails?: any };
 }
 
 const DroppableCell: React.FC<DroppableCellProps> = ({
-  day,
-  period,
-  children,
-  onDrop,
-  isValidDropTarget,
+  timeSlot,
   isEmpty,
-  classes = [],
-  schedule = null
+  isValidDropTarget,
+  children,
+  className,
+  onDrop,
+  onHover,
+  onValidationChange,
+  validationResult
 }) => {
-  const [isOver, setIsOver] = useState(false);
   const [dragItem, setDragItem] = useState<DragItem | null>(null);
   const [tooltipOpen, setTooltipOpen] = useState(false);
-  const [validationResult, setValidationResult] = useState<{
-    isValid: boolean;
-    reason?: string;
-    conflictDetails?: {
-      type: 'OCCUPIED' | 'CLASS_CONFLICT';
-      conflictingClass?: string;
-      conflictDescription?: string;
-    }
-  } | null>(null);
+  const [tooltipContent, setTooltipContent] = useState<string>('');
 
+  // Create a ref for the drop target
+  const dropRef = useRef(null);
+
+  // Reset state when not dragging
+  useEffect(() => {
+    if (!dragItem) {
+      setTooltipOpen(false);
+      if (onValidationChange) {
+        onValidationChange(true);
+      }
+    }
+  }, [dragItem, onValidationChange]);
+
+  // Setup drop target
   const [{ isOverCurrent }, drop] = useDrop(() => ({
     accept: ItemTypes.CLASS,
     drop: (item: DragItem) => {
-      onDrop(item, day, period);
+      onDrop(item, timeSlot);
+      return undefined;
     },
-    canDrop: (item: DragItem) => isValidDropTarget(item, day, period),
+    hover: (item) => {
+      const draggedItem = item as DragItem;
+      setDragItem(draggedItem);
+
+      if (onHover) {
+        onHover(draggedItem, timeSlot);
+      }
+    },
     collect: (monitor) => ({
       isOverCurrent: !!monitor.isOver({ shallow: true })
-    }),
-    hover: (item, monitor) => {
-      const dragItem = item as DragItem;
-      setIsOver(monitor.isOver({ shallow: true }));
-      setDragItem(dragItem);
-      
-      // If we have schedule and classes data, get detailed validation info
-      if (schedule && classes.length > 0 && dragItem.classId) {
-        try {
-          const result = validateClassMove(
-            dragItem.classId,
-            day,
-            period,
-            schedule,
-            classes
-          );
-          setValidationResult(result);
-        } catch (error) {
-          // Fallback to simple validation
-          setValidationResult({
-            isValid: isValidDropTarget(dragItem, day, period)
-          });
+    })
+  }), [timeSlot, onDrop, onHover]);
+
+  // Connect the drop ref
+  useEffect(() => {
+    drop(dropRef.current);
+  }, [drop]);
+
+  // Update validation feedback
+  useEffect(() => {
+    if (dragItem && isOverCurrent) {
+      const isValid = validationResult ? validationResult.isValid : isValidDropTarget(dragItem, timeSlot);
+      let reason = validationResult?.reason || '';
+
+      if (validationResult?.conflictDetails) {
+        const { type, conflictingClass, conflictDescription } = validationResult.conflictDetails;
+
+        if (type === 'OCCUPIED' && conflictingClass) {
+          reason = `This slot already has ${conflictingClass} assigned.`;
+        } else if (type === 'CLASS_CONFLICT' && conflictDescription) {
+          reason = conflictDescription;
         }
-      } else {
-        // Fallback to simple validation
-        setValidationResult({
-          isValid: isValidDropTarget(dragItem, day, period)
-        });
       }
-      
-      setTooltipOpen(true);
-    }
-  }), [day, period, onDrop, isValidDropTarget, schedule, classes]);
 
-  // Reset hover state when drag ends
-  React.useEffect(() => {
-    if (!isOverCurrent) {
+      // Update tooltip content based on validation
+      setTooltipContent(reason || (isValid ? 'Drop to assign class here' : 'Invalid drop target'));
+      setTooltipOpen(isOverCurrent && !!reason);
+
+      // Notify parent of validation status change
+      if (onValidationChange) {
+        onValidationChange(isValid, reason);
+      }
+    } else {
       setTooltipOpen(false);
-      setValidationResult(null);
     }
-  }, [isOverCurrent]);
+  }, [dragItem, isOverCurrent, isValidDropTarget, timeSlot, validationResult, onValidationChange]);
 
-  // Determine cell styling based on drop state
+  // Determine background color based on validation state
   const getBackgroundColor = () => {
     if (isOverCurrent && dragItem) {
-      const isValid = validationResult ? validationResult.isValid : isValidDropTarget(dragItem, day, period);
+      const isValid = validationResult ? validationResult.isValid : isValidDropTarget(dragItem, timeSlot);
       return isValid
         ? 'rgba(0, 255, 0, 0.2)' // Valid drop - green tint
         : 'rgba(255, 0, 0, 0.2)'; // Invalid drop - red tint
@@ -100,63 +109,40 @@ const DroppableCell: React.FC<DroppableCellProps> = ({
     return isEmpty ? 'background.paper' : undefined;
   };
 
-  // Get border style
-  const getBorderStyle = () => {
-    if (isOverCurrent && dragItem) {
-      const isValid = validationResult ? validationResult.isValid : isValidDropTarget(dragItem, day, period);
-      return isValid
-        ? '2px dashed #4caf50' // Valid drop - green border
-        : '2px dashed #f44336'; // Invalid drop - red border
-    }
-    return '1px solid transparent';
-  };
-
-  // Get tooltip message
-  const getTooltipMessage = (): string => {
-    if (!dragItem) return '';
-    
-    if (validationResult) {
-      return getDropTooltip(
-        validationResult.isValid, 
-        validationResult.reason,
-        validationResult.conflictDetails
-      );
-    }
-    
-    // Fallback to basic tooltip
-    const isValid = isValidDropTarget(dragItem, day, period);
-    return getDropTooltip(isValid);
-  };
-
   return (
     <Tooltip
-      title={getTooltipMessage()}
-      open={tooltipOpen && isOverCurrent}
+      open={tooltipOpen}
+      title={tooltipContent}
       arrow
       placement="top"
     >
       <Box
-        ref={drop}
+        className={className}
         sx={{
           height: '100%',
+          width: '100%',
+          padding: 1,
+          backgroundColor: getBackgroundColor(),
+          transition: 'background-color 0.2s ease',
+          borderRadius: '4px',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          bgcolor: getBackgroundColor(),
-          borderRadius: 1,
-          p: 1,
-          transition: 'all 0.2s ease-in-out',
-          border: getBorderStyle(),
-          '&:hover': {
-            boxShadow: isEmpty ? '0 0 0 1px rgba(0, 0, 0, 0.1)' : 'none',
-          }
+          position: 'relative'
         }}
-        className={`drop-target ${isOverCurrent && dragItem ? 
-          (validationResult?.isValid || isValidDropTarget(dragItem, day, period) ? 'valid-target' : 'invalid-target') : ''}`}
+        ref={dropRef}
       >
-        {children || (
-          <Typography variant="body2" color="text.secondary">
-            No Class
+        {children ? children : isEmpty && (
+          <Typography
+            variant="body2"
+            color="text.disabled"
+            sx={{
+              textAlign: 'center',
+              fontSize: '0.7rem',
+              userSelect: 'none'
+            }}
+          >
+            Empty
           </Typography>
         )}
       </Box>

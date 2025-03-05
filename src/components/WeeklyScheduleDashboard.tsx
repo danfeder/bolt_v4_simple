@@ -16,6 +16,8 @@ import {
   DialogContentText,
   DialogActions
 } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
@@ -26,6 +28,8 @@ import DraggableClassItem, { DragItem } from './DraggableClassItem';
 import DroppableCell from './DroppableCell';
 import TemporaryDropZone from './TemporaryDropZone';
 import { validateClassMove, moveClassInSchedule } from '../utils/dragDropUtils';
+import { isSameDay, parseISO } from 'date-fns';
+import { getDayDate, organizeScheduleIntoWeeks } from '../utils/scheduleUtils';
 import './WeeklyScheduleDashboard.css';
 
 // Detect if the device has touch support
@@ -62,13 +66,9 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
   const [manuallyAdjustedClasses, setManuallyAdjustedClasses] = useState<Set<string>>(new Set());
   
   // State for the temporary storage zone
-  const [tempStorage, setTempStorage] = useState<{
+  const [tempClasses, setTempClasses] = useState<{
     classId: string;
     classObj: Class;
-    originalTimeSlot: {
-      day: string;
-      period: number;
-    };
   }[]>([]);
   
   // State for tracking the current week in the rotation
@@ -93,10 +93,29 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
         }
         
         if (scheduleData) {
+          // Ensure the schedule has a start date
+          if (!scheduleData.startDate) {
+            // If no start date, use the next Monday as default
+            scheduleData.startDate = schedulerApi.getNextMonday();
+          }
+          
+          // Ensure the schedule has an assignments array
+          if (!scheduleData.assignments) {
+            scheduleData.assignments = [];
+          }
+          
           // Ensure the schedule has weeks organized
           if (!scheduleData.weeks) {
-            const { organizeScheduleIntoWeeks } = require('../utils/scheduleUtils');
-            scheduleData = organizeScheduleIntoWeeks(scheduleData);
+            try {
+              const weeks = organizeScheduleIntoWeeks(scheduleData);
+              scheduleData = {
+                ...scheduleData,
+                weeks: weeks
+              };
+            } catch (error) {
+              console.warn('Could not organize schedule into weeks:', error);
+              // Continue with the schedule even if weeks organization fails
+            }
           }
           
           setCurrentSchedule(scheduleData);
@@ -142,11 +161,11 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
   };
 
   // Handle class drop on a cell
-  const handleDropOnCell = (item: DragItem, day: Day, period: Period) => {
+  const handleDropOnCell = (item: DragItem, targetTimeSlot: TimeSlot) => {
     if (!currentSchedule) return;
     
     // Check if the drop is valid
-    const validationResult = validateClassMove(item.classId, day, period, currentSchedule, classes);
+    const validationResult = validateClassMove(item.classId, targetTimeSlot, currentSchedule, classes);
     
     if (!validationResult.isValid) {
       // Show an error notification with enhanced details
@@ -159,7 +178,7 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
     const updatedSchedule = moveClassInSchedule(
       currentSchedule,
       item.classId,
-      { day, period }
+      targetTimeSlot
     );
     
     // Add this class to the manually adjusted classes set
@@ -173,86 +192,110 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
     updateSchedule(updatedSchedule);
     
     // Check if the class was in temp storage and remove it if it was
-    if (tempStorage.some(tempClass => tempClass.classId === item.classId)) {
-      setTempStorage(prev => prev.filter(tempClass => tempClass.classId !== item.classId));
+    if (tempClasses.some(tempClass => tempClass.classId === item.classId)) {
+      setTempClasses(prev => prev.filter(tempClass => tempClass.classId !== item.classId));
     }
     
     // Get class name for better feedback
     const classObj = classes.find(c => c.id === item.classId);
     const className = classObj ? classObj.name : item.classId;
     
+    // Format date for feedback message
+    const dateStr = formatDate(targetTimeSlot.date);
+    
     // Show success notification with enhanced details
-    showNotification(`${className} moved to ${day}, Period ${period + 1}`, 'success');
+    showNotification(`${className} moved to ${targetTimeSlot.day}, Period ${targetTimeSlot.period + 1} (${dateStr})`, 'success');
   };
 
   // Handle class drop on temporary storage
-  const handleDropOnTemp = (item: DragItem) => {
+  const handleDropOnTempStorage = (item: DragItem) => {
     if (!currentSchedule) return;
     
-    // Find the class object
+    // Get the class object
     const classObj = classes.find(c => c.id === item.classId);
-    if (!classObj) {
-      showNotification('Class not found', 'error');
-      return;
-    }
+    if (!classObj) return;
     
-    // Check if already in temp storage
-    if (tempStorage.some(tempClass => tempClass.classId === item.classId)) {
-      showNotification('Class is already in temporary storage', 'info');
-      return;
-    }
-    
-    // Update the schedule by removing the class
+    // Remove the class from the schedule
+    const updatedAssignments = currentSchedule.assignments.filter(
+      a => a.classId !== item.classId
+    );
     const updatedSchedule = {
       ...currentSchedule,
-      assignments: currentSchedule.assignments.filter(
-        assignment => assignment.classId !== item.classId
-      )
+      assignments: updatedAssignments
     };
     
-    // Add this class to the manually adjusted classes set
-    setManuallyAdjustedClasses(prev => {
-      const updated = new Set(prev);
-      updated.add(item.classId);
-      return updated;
-    });
-    
-    // Update the schedule in state and API
-    updateSchedule(updatedSchedule);
-    
-    // Add to temp storage
-    setTempStorage(prev => [
+    // Add the class to temporary storage
+    setTempClasses(prev => [
       ...prev,
       {
         classId: item.classId,
         classObj,
-        originalTimeSlot: item.originalTimeSlot
       }
     ]);
     
-    showNotification('Class moved to temporary storage', 'info');
+    // Update the schedule
+    updateSchedule(updatedSchedule);
+    
+    // Show notification
+    showNotification(`${classObj.name} moved to temporary storage`, 'info');
+  };
+
+  // Handle drag start from temporary storage
+  const handleDragStartFromTemp = (classId: string) => {
+    // You can add any logic needed when dragging starts from temp storage
+  };
+
+  // Handle drag end from temporary storage
+  const handleDragEndFromTemp = (classId: string) => {
+    // Remove the class from temporary storage when it's dragged out and dropped somewhere
+    // This will only execute if the class is dropped in a valid location, otherwise
+    // it will bounce back to temporary storage
   };
 
   // Remove a class from temporary storage
   const handleRemoveFromTemp = (classId: string) => {
-    setTempStorage(prev => prev.filter(tempClass => tempClass.classId !== classId));
+    setTempClasses(prev => prev.filter(tempClass => tempClass.classId !== classId));
     showNotification('Class removed from temporary storage', 'info');
   };
 
-  // Check if a drop target is valid
-  const isValidDropTarget = (item: DragItem, day: Day, period: Period): boolean => {
+  // Validate if a class can be dropped to a time slot
+  const isValidDropTarget = (item: DragItem, timeSlot: TimeSlot): boolean => {
     if (!currentSchedule) return false;
     
-    const validationResult = validateClassMove(item.classId, day, period, currentSchedule, classes);
-    return validationResult.isValid;
+    // Find the class being moved
+    const classObj = classes.find(c => c.id === item.classId);
+    if (!classObj) return false;
+    
+    // Check if the drop is valid using validation function
+    const result = validateClassMove(item.classId, timeSlot, currentSchedule, classes);
+    return result.isValid;
   };
 
   // Find class assignment for a given time slot
   const findClassForTimeSlot = (day: Day, period: Period): string | null => {
     if (!currentSchedule) return null;
     
+    // Make sure assignments exist
+    if (!currentSchedule.assignments || !Array.isArray(currentSchedule.assignments)) {
+      return null;
+    }
+    
+    // Get the date for this time slot based on the current week
+    const slotDate = getDayDate(getCurrentWeekStartDate(), day);
+    
     const assignment = currentSchedule.assignments.find(
-      a => a.timeSlot.day === day && a.timeSlot.period === period
+      a => {
+        // If the assignment has a date, we need to match by date
+        if (a.timeSlot.date && slotDate) {
+          // Ensure we're working with Date objects
+          const assignmentDate = typeof a.timeSlot.date === 'string' ? parseISO(a.timeSlot.date) : a.timeSlot.date;
+          const targetDate = typeof slotDate === 'string' ? parseISO(slotDate) : slotDate;
+          const isSameDateMatch = isSameDay(assignmentDate, targetDate);
+          return isSameDateMatch && a.timeSlot.period === period;
+        }
+        // Otherwise, match by day and period
+        return a.timeSlot.day === day && a.timeSlot.period === period;
+      }
     );
     
     return assignment ? assignment.classId : null;
@@ -297,16 +340,32 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
     return `${startFormatted} - ${endFormatted}`;
   };
   
-  // Format a date for display
+  // Format a date for display - updated to use abbreviated format
   const formatDate = (date: Date): string => {
     const options: Intl.DateTimeFormatOptions = { 
       month: 'short', 
-      day: 'numeric',
-      year: 'numeric'
+      day: 'numeric'
     };
     return new Date(date).toLocaleDateString(undefined, options);
   };
-  
+
+  // Format day header with abbreviated day name and date
+  const formatDayHeader = (day: Day, currentWeekStartDate: Date): string => {
+    const dayDate = getDayDate(currentWeekStartDate, day);
+    // Use the first 3 letters of the day name (safely)
+    const dayName = day && typeof day === 'string' ? day.substring(0, 3) : '';
+    const formattedDate = formatDate(dayDate);
+    return `${dayName} ${formattedDate}`;
+  };
+
+  // Get the current week's start date (Monday)
+  const getCurrentWeekStartDate = (): Date => {
+    if (!rotationWeeks.length || !rotationWeeks[currentWeekIndex]) {
+      return new Date(); // Fallback to today
+    }
+    return rotationWeeks[currentWeekIndex].startDate;
+  };
+
   // Generate schedule
   const handleGenerateSchedule = () => {
     try {
@@ -350,6 +409,19 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
 
   // Re-optimize the current schedule
   const handleReOptimize = () => {
+    // Open the confirmation dialog
+    setReOptimizeDialogOpen(true);
+  };
+  
+  // Cancel re-optimization and close the dialog
+  const cancelReOptimize = () => {
+    setReOptimizeDialogOpen(false);
+  };
+  
+  // Confirm and proceed with re-optimization
+  const confirmReOptimize = () => {
+    setReOptimizeDialogOpen(false);
+    
     if (!currentSchedule) {
       setError('No schedule to re-optimize');
       return;
@@ -449,14 +521,6 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
     );
   }
 
-  if (!currentSchedule) {
-    return (
-      <Alert severity="warning" sx={{ mt: 2 }}>
-        No schedule available. Please generate a new schedule.
-      </Alert>
-    );
-  }
-
   return (
     <Box sx={{ p: 2 }}>
       <Typography variant="h4" gutterBottom>
@@ -495,6 +559,12 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
         </Button>
       </Box>
       
+      {!currentSchedule && (
+        <Alert severity="warning" sx={{ mt: 2, mb: 3 }}>
+          No schedule available. Please use the "Generate Schedule" button above to create a new schedule.
+        </Alert>
+      )}
+      
       {currentSchedule && rotationWeeks.length > 0 && (
         <Paper elevation={3} sx={{ p: 2, mb: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -502,6 +572,8 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
               onClick={goToPreviousWeek} 
               disabled={currentWeekIndex === 0}
               startIcon={<ArrowBackIcon />}
+              variant="outlined"
+              size="small"
             >
               Previous Week
             </Button>
@@ -516,6 +588,8 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
               onClick={goToNextWeek} 
               disabled={currentWeekIndex >= rotationWeeks.length - 1}
               endIcon={<ArrowForwardIcon />}
+              variant="outlined"
+              size="small"
             >
               Next Week
             </Button>
@@ -525,7 +599,7 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
           
           <DndProvider backend={isTouchDevice() ? TouchBackend : HTML5Backend}>
             <Grid container spacing={1} className="schedule-grid">
-              {/* Header row with day names */}
+              {/* Header row with day names and dates */}
               <Grid item xs={1}>
                 <Box sx={{ height: '50px' }}></Box>
               </Grid>
@@ -541,7 +615,7 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
                       color: 'primary.contrastText'
                     }}
                   >
-                    {day}
+                    {formatDayHeader(day as Day, getCurrentWeekStartDate())}
                   </Box>
                 </Grid>
               ))}
@@ -572,14 +646,27 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
                     const classObj = classId ? getClassById(classId) : undefined;
                     const isEmpty = !classId;
                     
+                    // Get the date for this cell based on the current week
+                    const cellDate = getDayDate(getCurrentWeekStartDate(), day as Day);
+                    const cellTimeSlot: TimeSlot = { 
+                      day: day as Day, 
+                      period: periodIndex as Period,
+                      date: cellDate
+                    };
+                    
                     return (
-                      <Grid item xs key={`${day}-${periodIndex}`}>
-                        <Box sx={{ height: '100px' }}>
+                      <Grid item xs key={`${day}-${periodIndex}`} 
+                            sx={{ position: 'relative' }}>
+                        <Box sx={{ 
+                          height: '100px', 
+                          border: '1px solid rgba(224, 224, 224, 0.4)',
+                          borderRadius: '4px',
+                          transition: 'all 0.2s ease'
+                        }}>
                           <DroppableCell
-                            day={day as Day}
-                            period={periodIndex as Period}
+                            timeSlot={cellTimeSlot}
                             onDrop={handleDropOnCell}
-                            isValidDropTarget={isValidDropTarget}
+                            isValidDropTarget={(item) => isValidDropTarget(item, cellTimeSlot)}
                             isEmpty={isEmpty}
                             classes={classes}
                             schedule={currentSchedule}
@@ -590,6 +677,7 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
                                 classId={classId}
                                 day={day}
                                 period={periodIndex}
+                                date={cellDate}
                               />
                             )}
                           </DroppableCell>
@@ -600,29 +688,38 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
                 </React.Fragment>
               ))}
             </Grid>
+            
+            <TemporaryDropZone 
+              tempClasses={tempClasses}
+              onDrop={handleDropOnTempStorage}
+              onDragStart={handleDragStartFromTemp}
+              onDragEnd={handleDragEndFromTemp}
+              draggableRender={(classId, classObj) => (
+                <DraggableClassItem
+                  classObj={classObj}
+                  classId={classId}
+                  day={Day.UNASSIGNED}
+                  period={0}
+                  isUnassigned={true}
+                />
+              )}
+            />
           </DndProvider>
         </Paper>
       )}
       
-      <TemporaryDropZone 
-        onDrop={handleDropOnTemp} 
-        storedClasses={tempStorage}
-        onDragFromTemp={(classId) => {
-          // This is handled by the drag logic, no additional action needed
-        }}
-        onRemoveFromTemp={handleRemoveFromTemp}
-      />
-      
       <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
         <Tooltip title="Re-optimize the schedule while preserving your manual adjustments">
-          <Button 
-            variant="outlined" 
-            color="secondary" 
-            onClick={handleReOptimize}
-            disabled={isReOptimizing || manuallyAdjustedClasses.size === 0}
-          >
-            {isReOptimizing ? 'Re-Optimizing...' : 'Re-Optimize Schedule'}
-          </Button>
+          <span>
+            <Button 
+              variant="outlined" 
+              color="secondary" 
+              onClick={handleReOptimize}
+              disabled={isReOptimizing || manuallyAdjustedClasses.size === 0}
+            >
+              {isReOptimizing ? 'Re-Optimizing...' : 'Re-Optimize Schedule'}
+            </Button>
+          </span>
         </Tooltip>
         
         <Button 

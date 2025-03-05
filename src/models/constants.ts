@@ -2,11 +2,11 @@ import { Day } from './types';
 
 // Days of the week
 export const DAYS_OF_WEEK: Day[] = [
-  Day.Monday,
-  Day.Tuesday,
-  Day.Wednesday,
-  Day.Thursday,
-  Day.Friday
+  Day.MONDAY,
+  Day.TUESDAY,
+  Day.WEDNESDAY,
+  Day.THURSDAY,
+  Day.FRIDAY
 ];
 
 // Number of periods per day

@@ -1,161 +1,118 @@
-import React, { useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useDrop } from 'react-dnd';
-import { Box, Typography, Paper, Divider, Collapse, IconButton } from '@mui/material';
-import { ExpandMore, ExpandLess, DeleteOutline } from '@mui/icons-material';
+import { 
+  Box, 
+  Paper, 
+  Typography, 
+  Divider
+} from '@mui/material';
 import { ItemTypes, DragItem } from './DraggableClassItem';
 import DraggableClassItem from './DraggableClassItem';
-import { Class } from '../models/types';
+import { Class, Day, Period } from '../models/types';
 
 interface TemporaryDropZoneProps {
-  onDrop: (item: DragItem) => void;
-  storedClasses: {
-    classId: string;
+  tempClasses: Array<{
     classObj: Class;
-    originalTimeSlot: {
-      day: string;
-      period: number;
-    };
-  }[];
-  onDragFromTemp: (classId: string) => void;
-  onRemoveFromTemp?: (classId: string) => void;
+    classId: string;
+  }>;
+  onDrop: (item: DragItem) => void;
+  onDragStart?: (classId: string) => void;
+  onDragEnd?: (classId: string) => void;
 }
 
 const TemporaryDropZone: React.FC<TemporaryDropZoneProps> = ({
+  tempClasses,
   onDrop,
-  storedClasses,
-  onDragFromTemp,
-  onRemoveFromTemp
+  onDragStart,
+  onDragEnd
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const [isOver, setIsOver] = useState(false);
-
-  const [{ isOverCurrent }, drop] = useDrop(() => ({
+  const dropRef = useRef(null);
+  
+  const [{ isOver }, drop] = useDrop(() => ({
     accept: ItemTypes.CLASS,
-    drop: (item: DragItem) => {
-      onDrop(item);
-      return undefined;
+    drop: (item) => {
+      onDrop(item as DragItem);
     },
     collect: (monitor) => ({
-      isOverCurrent: !!monitor.isOver(),
-    }),
-    hover: (item, monitor) => {
-      setIsOver(monitor.isOver());
-    }
+      isOver: !!monitor.isOver()
+    })
   }), [onDrop]);
 
-  const handleToggleExpand = () => {
-    setIsExpanded(!isExpanded);
+  // Connect the drop ref
+  useEffect(() => {
+    drop(dropRef.current);
+  }, [drop]);
+
+  // Handle class drag start
+  const handleDragStart = (classId: string) => {
+    if (onDragStart) onDragStart(classId);
   };
 
-  const handleRemoveClass = (classId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent triggering drag events
-    if (onRemoveFromTemp) {
-      onRemoveFromTemp(classId);
-    }
+  // Handle class drag end
+  const handleDragEnd = (classId: string) => {
+    if (onDragEnd) onDragEnd(classId);
   };
 
   return (
-    <Paper
-      elevation={3}
+    <Paper 
+      elevation={3} 
+      ref={dropRef}
       sx={{
         p: 2,
-        mb: 2,
-        minHeight: isExpanded ? '100px' : 'auto',
-        border: isOverCurrent ? '2px dashed #2196f3' : '1px solid #e0e0e0',
-        borderRadius: 2,
-        backgroundColor: isOverCurrent ? 'rgba(33, 150, 243, 0.1)' : undefined,
-        transition: 'all 0.2s ease',
-        position: 'relative'
+        mb: 3,
+        minHeight: '200px',
+        backgroundColor: isOver ? 'rgba(63, 81, 181, 0.1)' : 'white',
+        transition: 'background-color 0.3s ease',
+        border: isOver ? '2px dashed #3f51b5' : '1px solid rgba(0, 0, 0, 0.12)'
       }}
-      className={`temporary-storage ${isOverCurrent ? 'active' : ''}`}
     >
-      <Box 
-        sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          mb: isExpanded ? 1 : 0
-        }}
-      >
-        <Typography variant="h6">
-          Temporary Storage Zone {storedClasses.length > 0 && `(${storedClasses.length})`}
-        </Typography>
-        <IconButton onClick={handleToggleExpand} size="small">
-          {isExpanded ? <ExpandLess /> : <ExpandMore />}
-        </IconButton>
-      </Box>
+      <Typography variant="h6" gutterBottom>
+        Temporary Storage
+      </Typography>
+      <Typography variant="body2" color="text.secondary" paragraph>
+        Drag classes here to temporarily remove them from the schedule. You can drag them back to the schedule later.
+      </Typography>
       
-      <Collapse in={isExpanded}>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Drag classes here to temporarily remove them from the schedule. You can drag them back to any valid time slot.
-        </Typography>
-        
-        <Divider sx={{ mb: 2 }} />
-        
-        <Box
-          ref={drop}
-          sx={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 1,
-            minHeight: '60px',
-            p: 1,
-            border: '1px dashed #ccc',
-            borderRadius: 1,
-            backgroundColor: isOverCurrent ? 'rgba(33, 150, 243, 0.1)' : '#f9f9f9'
-          }}
-        >
-          {storedClasses.length === 0 ? (
+      <Divider sx={{ my: 2 }} />
+      
+      <Box sx={{ 
+        mt: 2, 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+        gap: 2
+      }}>
+        {tempClasses.length > 0 ? (
+          tempClasses.map(({ classObj, classId }) => (
             <Box 
+              key={classId} 
               sx={{ 
-                width: '100%', 
-                display: 'flex', 
-                justifyContent: 'center', 
-                alignItems: 'center',
-                p: 2,
-                color: 'text.disabled'
+                height: '100px',
+                borderRadius: '4px'
               }}
             >
-              <Typography variant="body2">No classes in temporary storage</Typography>
+              <DraggableClassItem
+                classObj={classObj}
+                classId={classId}
+                day={Day.UNASSIGNED}
+                period={0 as Period}
+                onDragStart={() => handleDragStart(classId)}
+                onDragEnd={() => handleDragEnd(classId)}
+              />
             </Box>
-          ) : (
-            storedClasses.map(({ classId, classObj, originalTimeSlot }) => (
-              <Box 
-                key={classId} 
-                sx={{ 
-                  width: '120px', 
-                  height: '80px',
-                  m: 0.5,
-                  position: 'relative'
-                }}
-              >
-                <IconButton 
-                  size="small" 
-                  sx={{ 
-                    position: 'absolute', 
-                    top: -8, 
-                    right: -8, 
-                    zIndex: 2,
-                    backgroundColor: 'white',
-                    '&:hover': {
-                      backgroundColor: '#f5f5f5',
-                    }
-                  }}
-                  onClick={(e) => handleRemoveClass(classId, e)}
-                >
-                  <DeleteOutline fontSize="small" color="error" />
-                </IconButton>
-                <DraggableClassItem
-                  classObj={classObj}
-                  classId={classId}
-                  day={originalTimeSlot.day}
-                  period={originalTimeSlot.period}
-                />
-              </Box>
-            ))
-          )}
-        </Box>
-      </Collapse>
+          ))
+        ) : (
+          <Box sx={{ 
+            p: 2, 
+            textAlign: 'center', 
+            color: 'text.secondary',
+            gridColumn: '1 / -1'
+          }}>
+            <Typography variant="body2">
+              No classes in temporary storage
+            </Typography>
+          </Box>
+        )}
+      </Box>
     </Paper>
   );
 };
