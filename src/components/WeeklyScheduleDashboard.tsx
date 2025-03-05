@@ -19,7 +19,7 @@ import {
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
-import { Schedule, TimeSlot, Day, Period, Class } from '../models/types';
+import { Schedule, TimeSlot, Day, Period, Class, RotationWeek } from '../models/types';
 import { schedulerApi } from '../engine/schedulerAPI';
 import { DAYS_OF_WEEK, PERIODS_PER_DAY } from '../models/constants';
 import DraggableClassItem, { DragItem } from './DraggableClassItem';
@@ -70,35 +70,56 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
       period: number;
     };
   }[]>([]);
+  
+  // State for tracking the current week in the rotation
+  const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
+  const [rotationWeeks, setRotationWeeks] = useState<RotationWeek[]>([]);
+  const [dateRange, setDateRange] = useState<{start: Date, end: Date} | null>(null);
 
-  // Load the schedule and classes
+  // Load schedule data
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
+    const loadScheduleData = async () => {
       try {
-        // If a schedule is provided, use it
-        if (schedule) {
-          setCurrentSchedule(schedule);
-        } else {
-          // Otherwise, try to generate a new one
-          const generatedSchedule = await schedulerApi.generateSchedule();
-          setCurrentSchedule(generatedSchedule);
-        }
+        setLoading(true);
         
-        // Load all classes
+        // Set classes
         const loadedClasses = await schedulerApi.getClasses();
         setClasses(loadedClasses);
         
-        setError(null);
-      } catch (err) {
-        console.error('Error loading schedule data:', err);
-        setError('Failed to load schedule data. Please try again later.');
-      } finally {
+        // Load schedule (either from props or from storage)
+        let scheduleData: Schedule | null = schedule;
+        if (!scheduleData) {
+          scheduleData = await schedulerApi.loadSchedule();
+        }
+        
+        if (scheduleData) {
+          // Ensure the schedule has weeks organized
+          if (!scheduleData.weeks) {
+            const { organizeScheduleIntoWeeks } = require('../utils/scheduleUtils');
+            scheduleData = organizeScheduleIntoWeeks(scheduleData);
+          }
+          
+          setCurrentSchedule(scheduleData);
+          
+          // Set up rotation weeks
+          if (scheduleData.weeks && scheduleData.weeks.length > 0) {
+            setRotationWeeks(scheduleData.weeks);
+            setDateRange({
+              start: scheduleData.startDate,
+              end: scheduleData.endDate || scheduleData.weeks[scheduleData.weeks.length - 1].endDate
+            });
+          }
+        }
+        
+        setLoading(false);
+      } catch (error) {
+        console.error('Error loading schedule data:', error);
+        setError('Failed to load schedule data');
         setLoading(false);
       }
     };
     
-    loadData();
+    loadScheduleData();
   }, [schedule]);
 
   // Update the underlying data model and notify parents
@@ -242,48 +263,136 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
     return classes.find(c => c.id === classId);
   };
 
-  // Handle re-optimization
-  const handleReOptimize = () => {
-    setReOptimizeDialogOpen(true);
+  // Handle week navigation
+  const goToNextWeek = () => {
+    if (rotationWeeks.length > 0 && currentWeekIndex < rotationWeeks.length - 1) {
+      setCurrentWeekIndex(currentWeekIndex + 1);
+    }
   };
-
-  // Confirm re-optimization
-  const confirmReOptimize = async () => {
-    if (!currentSchedule) return;
+  
+  const goToPreviousWeek = () => {
+    if (currentWeekIndex > 0) {
+      setCurrentWeekIndex(currentWeekIndex - 1);
+    }
+  };
+  
+  // Function to get the current week's assignments
+  const getCurrentWeekAssignments = (): any[] => {
+    if (rotationWeeks.length === 0 || !rotationWeeks[currentWeekIndex]) {
+      return currentSchedule?.assignments || [];
+    }
+    return rotationWeeks[currentWeekIndex].assignments;
+  };
+  
+  // Get formatted date range for display
+  const getFormattedDateRange = (): string => {
+    if (!rotationWeeks.length || !rotationWeeks[currentWeekIndex]) {
+      return 'No dates available';
+    }
     
-    setReOptimizeDialogOpen(false);
-    setIsReOptimizing(true);
+    const week = rotationWeeks[currentWeekIndex];
+    const startFormatted = formatDate(week.startDate);
+    const endFormatted = formatDate(week.endDate);
     
+    return `${startFormatted} - ${endFormatted}`;
+  };
+  
+  // Format a date for display
+  const formatDate = (date: Date): string => {
+    const options: Intl.DateTimeFormatOptions = { 
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'
+    };
+    return new Date(date).toLocaleDateString(undefined, options);
+  };
+  
+  // Generate schedule
+  const handleGenerateSchedule = () => {
     try {
-      // Convert manually adjusted classes set to array
-      const lockedAssignments = Array.from(manuallyAdjustedClasses);
+      setLoading(true);
       
-      // Use the schedulerAPI to re-optimize
-      const reOptimizedSchedule = await schedulerApi.reOptimizeSchedule(lockedAssignments);
+      // Get the next Monday as the default start date
+      const startDate = schedulerApi.getNextMonday();
       
-      // Update the schedule
-      setCurrentSchedule(reOptimizedSchedule);
+      // Generate a new schedule
+      const newSchedule = schedulerApi.generateSchedule(startDate);
       
-      // Notify parent component about the change
-      if (onScheduleChange) {
-        onScheduleChange(reOptimizedSchedule);
+      setCurrentSchedule(newSchedule);
+      
+      // Set up rotation weeks
+      if (newSchedule.weeks && newSchedule.weeks.length > 0) {
+        setRotationWeeks(newSchedule.weeks);
+        setCurrentWeekIndex(0);
+        setDateRange({
+          start: newSchedule.startDate,
+          end: newSchedule.endDate || newSchedule.weeks[newSchedule.weeks.length - 1].endDate
+        });
       }
       
-      showNotification(
-        `Schedule successfully re-optimized while preserving ${lockedAssignments.length} manual adjustments`, 
-        'success'
-      );
-    } catch (err) {
-      console.error('Error during re-optimization:', err);
-      showNotification('Failed to re-optimize schedule. Please try again.', 'error');
+      setNotification({
+        open: true,
+        message: 'Generated new schedule',
+        severity: 'success'
+      });
+      
+      // Notify parent if callback provided
+      if (onScheduleChange) {
+        onScheduleChange(newSchedule);
+      }
+    } catch (error) {
+      console.error('Error generating schedule:', error);
+      setError('Failed to generate schedule');
     } finally {
-      setIsReOptimizing(false);
+      setLoading(false);
     }
   };
 
-  // Cancel re-optimization
-  const cancelReOptimize = () => {
-    setReOptimizeDialogOpen(false);
+  // Re-optimize the current schedule
+  const handleReOptimize = () => {
+    if (!currentSchedule) {
+      setError('No schedule to re-optimize');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      
+      // Get the locked assignments
+      const lockedAssignments = currentSchedule.assignments
+        .filter(a => a.timeSlot.isFixed)
+        .map(a => a.classId);
+      
+      // Re-optimize the schedule
+      const newSchedule = schedulerApi.reOptimizeSchedule(lockedAssignments, currentSchedule);
+      
+      setCurrentSchedule(newSchedule);
+      
+      // Update rotation weeks
+      if (newSchedule.weeks && newSchedule.weeks.length > 0) {
+        setRotationWeeks(newSchedule.weeks);
+        setDateRange({
+          start: newSchedule.startDate,
+          end: newSchedule.endDate || newSchedule.weeks[newSchedule.weeks.length - 1].endDate
+        });
+      }
+      
+      setNotification({
+        open: true,
+        message: 'Re-optimized schedule with locked assignments',
+        severity: 'success'
+      });
+      
+      // Notify parent if callback provided
+      if (onScheduleChange) {
+        onScheduleChange(newSchedule);
+      }
+    } catch (error) {
+      console.error('Error re-optimizing schedule:', error);
+      setError('Failed to re-optimize schedule');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle saving the current schedule (button click)
@@ -349,124 +458,181 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
   }
 
   return (
-    <DndProvider backend={isTouchDevice() ? TouchBackend : HTML5Backend}>
-      <Paper elevation={1} sx={{ p: 3, mt: 2 }}>
-        <Typography variant="h5" gutterBottom>
-          Weekly Schedule Dashboard
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Drag and drop classes to adjust the schedule. Classes can be temporarily removed to the storage zone below.
-        </Typography>
+    <Box sx={{ p: 2 }}>
+      <Typography variant="h4" gutterBottom>
+        Weekly Schedule Dashboard
+      </Typography>
+      
+      {loading && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+          <CircularProgress />
+        </Box>
+      )}
+      
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+      
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Button 
+          variant="contained" 
+          color="primary" 
+          onClick={handleGenerateSchedule}
+          disabled={loading}
+        >
+          Generate Schedule
+        </Button>
         
-        <Divider sx={{ mb: 2 }} />
-        
-        <TemporaryDropZone 
-          onDrop={handleDropOnTemp} 
-          storedClasses={tempStorage}
-          onDragFromTemp={(classId) => {
-            // This is handled by the drag logic, no additional action needed
-          }}
-          onRemoveFromTemp={handleRemoveFromTemp}
-        />
-        
-        <Grid container spacing={1} className="schedule-grid">
-          {/* Header row with day names */}
-          <Grid item xs={1}>
-            <Box sx={{ height: '50px' }}></Box>
-          </Grid>
-          {DAYS_OF_WEEK.map(day => (
-            <Grid item xs key={day}>
-              <Box 
-                sx={{ 
-                  textAlign: 'center', 
-                  fontWeight: 'bold',
-                  p: 1,
-                  backgroundColor: 'primary.light',
-                  borderRadius: '4px 4px 0 0',
-                  color: 'primary.contrastText'
-                }}
-              >
-                {day}
-              </Box>
-            </Grid>
-          ))}
+        <Button 
+          variant="outlined" 
+          color="primary" 
+          onClick={handleReOptimize}
+          disabled={!currentSchedule || loading}
+        >
+          Re-Optimize Schedule
+        </Button>
+      </Box>
+      
+      {currentSchedule && rotationWeeks.length > 0 && (
+        <Paper elevation={3} sx={{ p: 2, mb: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Button 
+              onClick={goToPreviousWeek} 
+              disabled={currentWeekIndex === 0}
+              startIcon={<ArrowBackIcon />}
+            >
+              Previous Week
+            </Button>
+            
+            <Typography variant="h6">
+              {rotationWeeks[currentWeekIndex] ? 
+                `Week ${rotationWeeks[currentWeekIndex].weekNumber}: ${getFormattedDateRange()}` : 
+                'No schedule data'}
+            </Typography>
+            
+            <Button 
+              onClick={goToNextWeek} 
+              disabled={currentWeekIndex >= rotationWeeks.length - 1}
+              endIcon={<ArrowForwardIcon />}
+            >
+              Next Week
+            </Button>
+          </Box>
           
-          {/* Schedule grid */}
-          {Array.from({ length: PERIODS_PER_DAY }).map((_, periodIndex) => (
-            <React.Fragment key={periodIndex}>
-              {/* Period label */}
+          <Divider sx={{ mb: 2 }} />
+          
+          <DndProvider backend={isTouchDevice() ? TouchBackend : HTML5Backend}>
+            <Grid container spacing={1} className="schedule-grid">
+              {/* Header row with day names */}
               <Grid item xs={1}>
-                <Box 
-                  sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '100px',
-                    backgroundColor: 'grey.100',
-                    p: 1,
-                    fontWeight: 'medium'
-                  }}
-                >
-                  Period {periodIndex + 1}
-                </Box>
+                <Box sx={{ height: '50px' }}></Box>
               </Grid>
+              {DAYS_OF_WEEK.map(day => (
+                <Grid item xs key={day}>
+                  <Box 
+                    sx={{ 
+                      textAlign: 'center', 
+                      fontWeight: 'bold',
+                      p: 1,
+                      backgroundColor: 'primary.light',
+                      borderRadius: '4px 4px 0 0',
+                      color: 'primary.contrastText'
+                    }}
+                  >
+                    {day}
+                  </Box>
+                </Grid>
+              ))}
               
-              {/* Day cells */}
-              {DAYS_OF_WEEK.map(day => {
-                const classId = findClassForTimeSlot(day as Day, periodIndex as Period);
-                const classObj = classId ? getClassById(classId) : undefined;
-                const isEmpty = !classId;
-                
-                return (
-                  <Grid item xs key={`${day}-${periodIndex}`}>
-                    <Box sx={{ height: '100px' }}>
-                      <DroppableCell
-                        day={day as Day}
-                        period={periodIndex as Period}
-                        onDrop={handleDropOnCell}
-                        isValidDropTarget={isValidDropTarget}
-                        isEmpty={isEmpty}
-                        classes={classes}
-                        schedule={currentSchedule}
-                      >
-                        {classObj && classId && (
-                          <DraggableClassItem
-                            classObj={classObj}
-                            classId={classId}
-                            day={day}
-                            period={periodIndex}
-                          />
-                        )}
-                      </DroppableCell>
+              {/* Schedule grid */}
+              {Array.from({ length: PERIODS_PER_DAY }).map((_, periodIndex) => (
+                <React.Fragment key={periodIndex}>
+                  {/* Period label */}
+                  <Grid item xs={1}>
+                    <Box 
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '100px',
+                        backgroundColor: 'grey.100',
+                        p: 1,
+                        fontWeight: 'medium'
+                      }}
+                    >
+                      Period {periodIndex + 1}
                     </Box>
                   </Grid>
-                );
-              })}
-            </React.Fragment>
-          ))}
-        </Grid>
-        
-        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
-          <Tooltip title="Re-optimize the schedule while preserving your manual adjustments">
-            <Button 
-              variant="outlined" 
-              color="secondary" 
-              onClick={handleReOptimize}
-              disabled={isReOptimizing || manuallyAdjustedClasses.size === 0}
-            >
-              {isReOptimizing ? 'Re-Optimizing...' : 'Re-Optimize Schedule'}
-            </Button>
-          </Tooltip>
-          
+                  
+                  {/* Day cells */}
+                  {DAYS_OF_WEEK.map(day => {
+                    const classId = findClassForTimeSlot(day as Day, periodIndex as Period);
+                    const classObj = classId ? getClassById(classId) : undefined;
+                    const isEmpty = !classId;
+                    
+                    return (
+                      <Grid item xs key={`${day}-${periodIndex}`}>
+                        <Box sx={{ height: '100px' }}>
+                          <DroppableCell
+                            day={day as Day}
+                            period={periodIndex as Period}
+                            onDrop={handleDropOnCell}
+                            isValidDropTarget={isValidDropTarget}
+                            isEmpty={isEmpty}
+                            classes={classes}
+                            schedule={currentSchedule}
+                          >
+                            {classObj && classId && (
+                              <DraggableClassItem
+                                classObj={classObj}
+                                classId={classId}
+                                day={day}
+                                period={periodIndex}
+                              />
+                            )}
+                          </DroppableCell>
+                        </Box>
+                      </Grid>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </Grid>
+          </DndProvider>
+        </Paper>
+      )}
+      
+      <TemporaryDropZone 
+        onDrop={handleDropOnTemp} 
+        storedClasses={tempStorage}
+        onDragFromTemp={(classId) => {
+          // This is handled by the drag logic, no additional action needed
+        }}
+        onRemoveFromTemp={handleRemoveFromTemp}
+      />
+      
+      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
+        <Tooltip title="Re-optimize the schedule while preserving your manual adjustments">
           <Button 
-            variant="contained" 
-            color="primary" 
-            onClick={handleSaveSchedule}
+            variant="outlined" 
+            color="secondary" 
+            onClick={handleReOptimize}
+            disabled={isReOptimizing || manuallyAdjustedClasses.size === 0}
           >
-            Save Schedule
+            {isReOptimizing ? 'Re-Optimizing...' : 'Re-Optimize Schedule'}
           </Button>
-        </Box>
-      </Paper>
+        </Tooltip>
+        
+        <Button 
+          variant="contained" 
+          color="primary" 
+          onClick={handleSaveSchedule}
+        >
+          Save Schedule
+        </Button>
+      </Box>
       
       {/* Re-optimization confirmation dialog */}
       <Dialog
@@ -507,7 +673,7 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
           {notification.message}
         </Alert>
       </Snackbar>
-    </DndProvider>
+    </Box>
   );
 };
 

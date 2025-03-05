@@ -178,32 +178,92 @@ export class SchedulerAPI {
       throw new Error('No classes to schedule');
     }
     
+    // Generate a basic schedule
     const generatedSchedule = this.scheduler.generateSchedule();
     
-    // Add a startDate to the schedule if one is provided
+    // Determine the start date
+    let scheduleStartDate: Date;
     if (startDate) {
-      generatedSchedule.startDate = startDate;
+      scheduleStartDate = startDate;
     } else {
       // Use the rotation start date from constraints if available
       const constraints = this.scheduler.getConstraints();
       if (constraints.hard.rotationStartDate) {
-        generatedSchedule.startDate = constraints.hard.rotationStartDate;
+        scheduleStartDate = constraints.hard.rotationStartDate;
       } else {
         // Default to next Monday
-        generatedSchedule.startDate = this.getNextMonday();
+        scheduleStartDate = this.getNextMonday();
       }
     }
     
-    this.currentSchedule = generatedSchedule;
+    // Set the start date
+    generatedSchedule.startDate = scheduleStartDate;
+    
+    // Calculate end date as 2 weeks from start by default
+    const twoWeeksLater = new Date(scheduleStartDate);
+    twoWeeksLater.setDate(scheduleStartDate.getDate() + 14);
+    generatedSchedule.endDate = twoWeeksLater;
+    
+    // Enhance the schedule with dates and organize into weeks
+    const enhancedSchedule = this.enhanceScheduleWithDates(generatedSchedule);
+    
+    this.currentSchedule = enhancedSchedule;
     
     // Persist to storage if not in test environment
     if (!isTestEnv()) {
-      dataUtils.saveSchedule(generatedSchedule);
+      dataUtils.saveSchedule(enhancedSchedule);
     }
     
-    return generatedSchedule;
+    return enhancedSchedule;
   }
   
+  /**
+   * Enhances a schedule with dates and organizes it into weeks
+   * @param schedule The schedule to enhance
+   * @returns The enhanced schedule
+   */
+  enhanceScheduleWithDates(schedule: Schedule): Schedule {
+    // Import necessary utilities from scheduleUtils
+    const { enhanceAssignmentsWithDates, organizeScheduleIntoWeeks } = require('../utils/scheduleUtils');
+    
+    // First enhance all assignments with dates
+    const withDates = enhanceAssignmentsWithDates(schedule);
+    
+    // Then organize into weeks
+    return organizeScheduleIntoWeeks(withDates);
+  }
+  
+  /**
+   * Creates a schedule covering a specified date range
+   * @param startDate The start date for the schedule
+   * @param endDate Optional end date (defaults to 4 weeks from start)
+   * @returns A new schedule covering the specified date range
+   */
+  createScheduleForDateRange(startDate: Date, endDate?: Date): Schedule {
+    if (!this.currentSchedule) {
+      throw new Error('No current schedule to extend');
+    }
+    
+    // Import createScheduleForDateRange from scheduleUtils
+    const { createScheduleForDateRange } = require('../utils/scheduleUtils');
+    
+    // Create a new schedule for the specified date range
+    const newSchedule = createScheduleForDateRange(
+      this.currentSchedule,
+      startDate,
+      endDate
+    );
+    
+    this.currentSchedule = newSchedule;
+    
+    // Persist to storage if not in test environment
+    if (!isTestEnv()) {
+      dataUtils.saveSchedule(newSchedule);
+    }
+    
+    return newSchedule;
+  }
+
   /**
    * Get the next Monday from today
    * @returns Date object representing next Monday

@@ -73,7 +73,10 @@ export interface Schedule {
   fitness?: number;               // Optional fitness score
   hardConstraintViolations?: number; // Number of hard constraint violations
   softConstraintSatisfaction?: number; // Measure of soft constraint satisfaction
-  startDate?: Date;               // Optional start date for the schedule
+  startDate: Date;                // Start date for the schedule (required)
+  endDate?: Date;                 // Optional end date for the schedule
+  weeks?: RotationWeek[];         // Weekly breakdown of the schedule
+  numberOfWeeks?: number;         // Number of weeks in the rotation
 }
 
 // Schedule rotation history entry
@@ -84,6 +87,8 @@ export interface ScheduleRotation {
   createdAt: Date;              // When this rotation was created
   notes?: string;               // Optional notes about this rotation
   classCount?: number;          // Number of classes in this rotation (for quick reference)
+  dateRange?: DateRange;        // Date range for this rotation
+  active?: boolean;             // Whether this rotation is currently active
 }
 
 // Constraint type (hard or soft)
