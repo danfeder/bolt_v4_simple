@@ -7,7 +7,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
   IconButton,
   Dialog,
   DialogTitle,
@@ -428,7 +427,7 @@ const ClassManager: React.FC = () => {
               borderRadius: 1
             }}>
               {filteredClasses.length === 0 ? (
-                <ListItem>
+                <ListItem component="li">
                   <ListItemText 
                     primary={
                       searchTerm 
@@ -446,52 +445,32 @@ const ClassManager: React.FC = () => {
                 filteredClasses.map((classObj) => (
                   <ListItem
                     key={classObj.id}
-                    selected={classObj.id === selectedClassId}
+                    component="li"
                     onClick={() => handleSelectClass(classObj.id)}
-                    sx={{ cursor: 'pointer' }}
+                    sx={{ 
+                      cursor: 'pointer',
+                      bgcolor: classObj.id === selectedClassId ? 'action.selected' : 'transparent'
+                    }}
                     secondaryAction={
-                      <ListItemSecondaryAction>
-                        <Tooltip title="Edit class">
-                          <IconButton
-                            edge="end"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditClass(classObj);
-                            }}
-                          >
-                            <EditIcon />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Delete class">
-                          <IconButton
-                            edge="end"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleConfirmDelete(classObj.id);
-                            }}
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </Tooltip>
-                      </ListItemSecondaryAction>
+                      <IconButton
+                        edge="end"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditClass(classObj);
+                        }}
+                      >
+                        <EditIcon />
+                      </IconButton>
                     }
                   >
                     <ListItemText 
                       primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Typography
+                          fontWeight={classObj.id === selectedClassId ? 'bold' : 'normal'}
+                        >
                           {classObj.name}
-                          {classObj.conflicts.length > 0 && (
-                            <Tooltip title={`${classObj.conflicts.length} conflicts`}>
-                              <Badge 
-                                badgeContent={classObj.conflicts.length} 
-                                color="primary"
-                                sx={{ ml: 1 }}
-                              />
-                            </Tooltip>
-                          )}
-                        </Box>
+                        </Typography>
                       }
-                      secondary={`${classObj.conflicts.length} conflict${classObj.conflicts.length !== 1 ? 's' : ''}`}
                     />
                   </ListItem>
                 ))
