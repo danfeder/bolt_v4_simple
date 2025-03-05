@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { dataUtils } from './dataUtils';
-import { Schedule, ScheduleRotation } from '../models/types';
+import { Schedule, ScheduleRotation, Class } from '../models/types';
 import { Day } from '../models/types';
 
 // Mock localStorage
@@ -31,16 +31,18 @@ Object.defineProperty(window, 'localStorage', {
 describe('Schedule Rotation History Utilities', () => {
   // Sample schedule for testing
   const sampleSchedule: Schedule = {
-    classes: [
-      { id: 'class1', name: 'Yoga', conflicts: [] },
-      { id: 'class2', name: 'Pilates', conflicts: [] }
-    ],
     assignments: [
       { classId: 'class1', timeSlot: { day: Day.MONDAY, period: 1 } },
       { classId: 'class2', timeSlot: { day: Day.TUESDAY, period: 2 } }
     ],
     startDate: new Date('2025-01-01')
   };
+
+  // Sample classes for testing
+  const sampleClasses: Class[] = [
+    { id: 'class1', name: 'Yoga', conflicts: [] },
+    { id: 'class2', name: 'Pilates', conflicts: [] }
+  ];
 
   // Clear localStorage before each test
   beforeEach(() => {
@@ -62,7 +64,6 @@ describe('Schedule Rotation History Utilities', () => {
       expect(savedRotation.classCount).toBe(2);
       
       // Check properties but not the whole object since dates are serialized
-      expect(savedRotation.schedule.classes).toEqual(sampleSchedule.classes);
       expect(savedRotation.schedule.assignments).toEqual(sampleSchedule.assignments);
       
       // Verify localStorage was called with the correct data
