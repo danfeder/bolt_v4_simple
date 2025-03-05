@@ -1,5 +1,5 @@
 import { Chromosome } from './chromosome';
-import { Class, Assignment, Constraint, ConstraintType, TimeSlot } from '../models/types';
+import { Class, Assignment, Constraint, ConstraintType, TimeSlot, Day, Period } from '../models/types';
 import { areTimeSlotsEqual } from '../utils/timeSlot';
 
 /**
@@ -159,8 +159,8 @@ export class FitnessEvaluator {
     // Specific class must be at a specific time
     if (constraint.id.startsWith('class-at-time-')) {
       const classId = constraint.parameters?.classId as string;
-      const targetDay = constraint.parameters?.day as number;
-      const targetPeriod = constraint.parameters?.period as number;
+      const targetDay = constraint.parameters?.day as Day;
+      const targetPeriod = constraint.parameters?.period as Period;
       
       if (classId && targetDay !== undefined && targetPeriod !== undefined) {
         const assignment = assignments.find(a => a.classId === classId);
@@ -188,7 +188,7 @@ export class FitnessEvaluator {
     // No more than N classes per day
     if (constraint.id === 'max-classes-per-day') {
       const maxClasses = constraint.parameters?.maxClasses as number || 10;
-      const classesByDay = new Map<number, number>();
+      const classesByDay = new Map<Day, number>();
       
       // Count classes per day
       for (const assignment of assignments) {
@@ -204,7 +204,7 @@ export class FitnessEvaluator {
               type: ViolationType.OTHER,
               constraintId: constraint.id,
               classId: '',
-              timeSlot: { day, period: 0 },
+              timeSlot: { day, period: 0 as Period },
               description: `Day ${day} has ${count} classes, exceeding the maximum of ${maxClasses}`
             });
           }
