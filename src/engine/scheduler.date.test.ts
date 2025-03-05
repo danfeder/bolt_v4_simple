@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { GymClassScheduler } from './scheduler';
-import { Class, Day, TimeSlot } from '../models/types';
+import { Class, Day, Schedule, TimeSlot } from '../models/types';
 
 describe('GymClassScheduler with Date-Specific TimeSlots', () => {
   let scheduler: GymClassScheduler;
@@ -38,14 +38,13 @@ describe('GymClassScheduler with Date-Specific TimeSlots', () => {
     const today = new Date();
     
     // Create a schedule with an assignment that violates a date-specific conflict
-    const invalidSchedule = {
+    const invalidSchedule: Schedule = {
       assignments: [
         { 
           classId: 'class1', 
           timeSlot: { day: Day.MONDAY, period: 1, date: today } 
         }
       ],
-      classes: testClasses,
       startDate: today
     };
     
@@ -66,7 +65,7 @@ describe('GymClassScheduler with Date-Specific TimeSlots', () => {
     // Create a schedule with assignments that don't violate conflicts
     // - class1 is scheduled on tomorrow (not conflicting with today's conflict)
     // - class2 is scheduled on Tuesday (not conflicting with Monday's conflict)
-    const validSchedule = {
+    const validSchedule: Schedule = {
       assignments: [
         { 
           classId: 'class1', 
@@ -77,7 +76,6 @@ describe('GymClassScheduler with Date-Specific TimeSlots', () => {
           timeSlot: { day: Day.TUESDAY, period: 2 }
         }
       ],
-      classes: testClasses,
       startDate: today
     };
     
