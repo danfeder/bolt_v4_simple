@@ -5,7 +5,7 @@ import {
   enhanceAssignmentsWithDates, 
   createScheduleForDateRange 
 } from '../scheduleUtils';
-import { Schedule, Day, Assignment } from '../../models/types';
+import { Schedule, Day } from '../../models/types';
 import { describe, test, expect } from 'vitest';
 
 describe('scheduleUtils', () => {
