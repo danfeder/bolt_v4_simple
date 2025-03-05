@@ -174,7 +174,8 @@ describe('GymClassScheduler', () => {
             timeSlot: { ...initialSchedule.assignments[0].timeSlot } // Put in same slot as first class
           },
           ...initialSchedule.assignments.slice(3)
-        ]
+        ],
+        startDate: new Date() // Adding required startDate
       };
       
       // This should throw an error since we're trying to lock in conflicting assignments

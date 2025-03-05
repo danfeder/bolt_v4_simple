@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { GymClassScheduler } from './scheduler';
-import { Class, Day, Schedule, TimeSlot } from '../models/types';
+import { Class, Day, Schedule } from '../models/types';
 
 describe('GymClassScheduler with Date-Specific TimeSlots', () => {
   let scheduler: GymClassScheduler;
