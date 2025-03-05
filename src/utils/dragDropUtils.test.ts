@@ -50,11 +50,12 @@ describe('Drag and Drop Utils', () => {
           classId: 'class_2',
           timeSlot: { day: Day.TUESDAY, period: 3 as Period }
         }
-      ]
+      ],
+      startDate: new Date()
     };
 
     // Configure validateSchedule mock to return valid result by default
-    vi.mocked(schedulerApi.validateSchedule).mockReturnValue({
+    vi.mocked(schedulerApi?.validateSchedule).mockReturnValue({
       isValid: true,
       hardConstraintViolations: 0,
       violationDetails: []
@@ -152,7 +153,8 @@ describe('Drag and Drop Utils', () => {
             classId: 'class_2',
             timeSlot: { day: Day.TUESDAY, period: 3 as Period }
           }
-        ]
+        ],
+        startDate: new Date()
       };
 
       const newSchedule = moveClassInSchedule(
@@ -182,12 +184,12 @@ describe('Drag and Drop Utils', () => {
       );
 
       // Now let's simulate what would happen when this is integrated with the API
-      schedulerApi.saveSchedule(newSchedule);
+      schedulerApi?.saveSchedule?.(newSchedule);
 
-      expect(schedulerApi.saveSchedule).toHaveBeenCalledWith(newSchedule);
-      expect(vi.mocked(schedulerApi.saveSchedule).mock.calls[0][0].assignments).toHaveLength(2);
+      expect(schedulerApi?.saveSchedule).toHaveBeenCalledWith(newSchedule);
+      expect(vi.mocked(schedulerApi?.saveSchedule).mock.calls[0][0].assignments).toHaveLength(2);
       expect(
-        vi.mocked(schedulerApi.saveSchedule).mock.calls[0][0].assignments.find(a => 
+        vi.mocked(schedulerApi?.saveSchedule).mock.calls[0][0].assignments.find(a => 
           a.classId === 'class_1' && 
           a.timeSlot.day === Day.WEDNESDAY && 
           a.timeSlot.period === 1
