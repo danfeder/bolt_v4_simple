@@ -97,6 +97,20 @@ export enum ConstraintType {
   SOFT = 'SOFT'
 }
 
+// Date range for schedule rotations
+export interface DateRange {
+  startDate: Date;
+  endDate: Date;
+}
+
+// Weekly rotation definition
+export interface RotationWeek {
+  weekNumber: number;      // Index of the week in the rotation
+  startDate: Date;         // Start date of this week
+  endDate: Date;           // End date of this week
+  assignments: Assignment[]; // Assignments for this week
+}
+
 // Constraint definition
 export interface Constraint {
   id: string;
