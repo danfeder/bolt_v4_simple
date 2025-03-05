@@ -6,6 +6,7 @@ import {
   createScheduleForDateRange 
 } from '../scheduleUtils';
 import { Schedule, Day, Assignment } from '../../models/types';
+import { describe, test, expect } from 'vitest';
 
 describe('scheduleUtils', () => {
   // Mock date for testing (2025-03-04 is a Tuesday)
@@ -205,11 +206,15 @@ describe('scheduleUtils', () => {
       
       // Check that assignments have dates
       newSchedule.assignments.forEach(assignment => {
-        expect(assignment.timeSlot.date).toBeDefined();
+        const date = assignment.timeSlot.date;
+        expect(date).toBeDefined();
         
-        // Check that dates are within the specified range
-        expect(assignment.timeSlot.date.getTime()).toBeGreaterThanOrEqual(newStartDate.getTime());
-        expect(assignment.timeSlot.date.getTime()).toBeLessThanOrEqual(newEndDate.getTime());
+        // Type assertion to help TypeScript understand our expect check above
+        if (date) {
+          // Check that dates are within the specified range
+          expect(date.getTime()).toBeGreaterThanOrEqual(newStartDate.getTime());
+          expect(date.getTime()).toBeLessThanOrEqual(newEndDate.getTime());
+        }
       });
     });
   });
