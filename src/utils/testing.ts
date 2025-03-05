@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 /**
  * Helper function to detect if we're in a test environment
  * @returns True if the application is running in a test environment
