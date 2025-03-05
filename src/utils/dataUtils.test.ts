@@ -32,8 +32,8 @@ describe('Schedule Rotation History Utilities', () => {
   // Sample schedule for testing
   const sampleSchedule: Schedule = {
     classes: [
-      { id: 'class1', name: 'Yoga', instructor: 'John', conflicts: [] },
-      { id: 'class2', name: 'Pilates', instructor: 'Jane', conflicts: [] }
+      { id: 'class1', name: 'Yoga', conflicts: [] },
+      { id: 'class2', name: 'Pilates', conflicts: [] }
     ],
     assignments: [
       { classId: 'class1', timeSlot: { day: Day.MONDAY, period: 1 } },

@@ -8,25 +8,21 @@ describe('GymClassScheduler', () => {
     {
       id: 'class1',
       name: 'Yoga',
-      instructor: 'Instructor 1',
       conflicts: []
     },
     {
       id: 'class2',
       name: 'Pilates',
-      instructor: 'Instructor 2',
       conflicts: []
     },
     {
       id: 'class3',
       name: 'CrossFit',
-      instructor: 'Instructor 3',
       conflicts: []
     },
     {
       id: 'class4',
       name: 'Zumba',
-      instructor: 'Instructor 1', // Same instructor as class1
       conflicts: []
     }
   ];

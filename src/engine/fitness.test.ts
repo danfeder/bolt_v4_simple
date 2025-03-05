@@ -9,19 +9,16 @@ describe('FitnessEvaluator', () => {
     {
       id: 'class1',
       name: 'Class 1',
-      instructor: 'Instructor 1',
       conflicts: [{ day: Day.FRIDAY, period: 3 }]
     },
     {
       id: 'class2',
       name: 'Class 2',
-      instructor: 'Instructor 1',
       conflicts: []
     },
     {
       id: 'class3',
       name: 'Class 3',
-      instructor: 'Instructor 2',
       conflicts: []
     }
   ];
@@ -36,12 +33,6 @@ describe('FitnessEvaluator', () => {
         day: Day.MONDAY,
         period: 2
       }
-    },
-    {
-      id: 'instructor-classes-same-day',
-      type: ConstraintType.SOFT,
-      description: 'Classes taught by the same instructor should be on the same day',
-      parameters: {}
     },
     {
       id: 'max-classes-per-day',
@@ -70,24 +61,6 @@ describe('FitnessEvaluator', () => {
       expect(result.hardConstraintViolations).toBe(0);
       expect(result.softConstraintsSatisfied).toBe(0);
       expect(result.violations).toHaveLength(0);
-    });
-    
-    it('should detect instructor conflicts', () => {
-      const initialGenes: Assignment[] = [
-        { classId: 'class1', timeSlot: { day: Day.MONDAY, period: 2 } },
-        { classId: 'class2', timeSlot: { day: Day.MONDAY, period: 2 } }, // Same time as class1, same instructor
-        { classId: 'class3', timeSlot: { day: Day.WEDNESDAY, period: 4 } }
-      ];
-      
-      const chromosome = new Chromosome(testClasses, initialGenes);
-      const evaluator = new FitnessEvaluator(testClasses, []);
-      
-      const result = evaluator.evaluate(chromosome);
-      
-      expect(result.hardConstraintViolations).toBe(1);
-      expect(result.fitnessScore).toBe(FITNESS_CONSTANTS.BASE_FITNESS - FITNESS_CONSTANTS.HARD_CONSTRAINT_PENALTY);
-      expect(result.violations).toHaveLength(1);
-      expect(result.violations[0].type).toBe(ViolationType.INSTRUCTOR_CONFLICT);
     });
     
     it('should detect class scheduling conflicts', () => {
@@ -127,23 +100,6 @@ describe('FitnessEvaluator', () => {
       expect(result.violations[0].constraintId).toBe('class-at-time-1');
     });
     
-    it('should evaluate soft constraint: instructor classes on same day', () => {
-      // Instructor 1 teaches class1 and class2, they should be on the same day
-      const initialGenes: Assignment[] = [
-        { classId: 'class1', timeSlot: { day: Day.MONDAY, period: 2 } },
-        { classId: 'class2', timeSlot: { day: Day.MONDAY, period: 3 } }, // Same day as class1
-        { classId: 'class3', timeSlot: { day: Day.WEDNESDAY, period: 4 } }
-      ];
-      
-      const chromosome = new Chromosome(testClasses, initialGenes);
-      const evaluator = new FitnessEvaluator(testClasses, [testConstraints[1]]);
-      
-      const result = evaluator.evaluate(chromosome);
-      
-      expect(result.softConstraintsSatisfied).toBe(1);
-      expect(result.fitnessScore).toBe(FITNESS_CONSTANTS.BASE_FITNESS + FITNESS_CONSTANTS.SOFT_CONSTRAINT_REWARD);
-    });
-    
     it('should evaluate hard constraint: max classes per day', () => {
       // Max 2 classes per day, but we have 3 on Monday
       const initialGenes: Assignment[] = [
@@ -153,7 +109,7 @@ describe('FitnessEvaluator', () => {
       ];
       
       const chromosome = new Chromosome(testClasses, initialGenes);
-      const evaluator = new FitnessEvaluator(testClasses, [testConstraints[2]]);
+      const evaluator = new FitnessEvaluator(testClasses, [testConstraints[1]]);
       
       const result = evaluator.evaluate(chromosome);
       
@@ -166,11 +122,10 @@ describe('FitnessEvaluator', () => {
     it('should evaluate multiple constraints at once', () => {
       // All constraints are violated:
       // 1. class1 is not at Monday period 2
-      // 2. Instructor 1's classes are on different days
-      // 3. More than 2 classes on Monday
+      // 2. More than 2 classes on Monday
       const initialGenes: Assignment[] = [
         { classId: 'class1', timeSlot: { day: Day.TUESDAY, period: 2 } }, // Should be Monday period 2
-        { classId: 'class2', timeSlot: { day: Day.MONDAY, period: 3 } },  // Different day than class1
+        { classId: 'class2', timeSlot: { day: Day.MONDAY, period: 3 } },  // 
         { classId: 'class3', timeSlot: { day: Day.MONDAY, period: 4 } }   // This makes 2 classes on Monday, which is ok
       ];
       
@@ -180,7 +135,6 @@ describe('FitnessEvaluator', () => {
       const result = evaluator.evaluate(chromosome);
       
       expect(result.hardConstraintViolations).toBe(1); // Just the class-at-time constraint
-      expect(result.softConstraintsSatisfied).toBe(0); // The instructor-classes-same-day is violated
       expect(result.fitnessScore).toBe(FITNESS_CONSTANTS.BASE_FITNESS - FITNESS_CONSTANTS.HARD_CONSTRAINT_PENALTY);
     });
     

@@ -18,7 +18,6 @@ vi.mock('../components/ClassManager', () => ({
           data-testid="add-class-btn" 
           onClick={() => props.schedulerApi.addClass({
             name: 'New Class',
-            instructor: 'Test Instructor',
             conflicts: []
           })}
         >
@@ -124,8 +123,8 @@ import WeeklyScheduleDashboard from '../components/WeeklyScheduleDashboard';
 
 describe('API Integration Tests', () => {
   const testClasses: Class[] = [
-    { id: 'class1', name: 'Yoga', instructor: 'John', conflicts: [] },
-    { id: 'class2', name: 'Pilates', instructor: 'Jane', conflicts: [] }
+    { id: 'class1', name: 'Yoga', conflicts: [] },
+    { id: 'class2', name: 'Pilates', conflicts: [] }
   ];
   
   const testSchedule: Schedule = {
@@ -198,7 +197,6 @@ describe('API Integration Tests', () => {
     it('should call API when adding a class', () => {
       const newClass = {
         name: 'New Yoga Class',
-        instructor: 'John Doe',
         conflicts: []
       };
       
@@ -232,7 +230,6 @@ describe('API Integration Tests', () => {
       // Check that addClass was called with correct parameters
       expect(schedulerApi.addClass).toHaveBeenCalledWith({
         name: 'New Class',
-        instructor: 'Test Instructor',
         conflicts: []
       });
     });

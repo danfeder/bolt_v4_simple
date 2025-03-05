@@ -79,9 +79,6 @@ const DraggableClassItem: React.FC<DraggableClassItemProps> = ({
           <Typography variant="body2">
             {`Duration: ${classObj.durationMinutes} minutes`}
           </Typography>
-          <Typography variant="body2">
-            {`Instructor: ${classObj.instructor || 'Not assigned'}`}
-          </Typography>
         </React.Fragment>
       }
       arrow

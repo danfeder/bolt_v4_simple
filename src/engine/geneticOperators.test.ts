@@ -9,19 +9,16 @@ describe('GeneticOperators', () => {
     {
       id: 'class1',
       name: 'Class 1',
-      instructor: 'Instructor 1',
       conflicts: []
     },
     {
       id: 'class2',
       name: 'Class 2',
-      instructor: 'Instructor 2',
       conflicts: []
     },
     {
       id: 'class3',
       name: 'Class 3',
-      instructor: 'Instructor 3',
       conflicts: []
     }
   ];

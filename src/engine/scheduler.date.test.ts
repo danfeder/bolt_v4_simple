@@ -18,7 +18,6 @@ describe('GymClassScheduler with Date-Specific TimeSlots', () => {
       {
         id: 'class1',
         name: 'Yoga',
-        instructor: 'John',
         conflicts: [
           { day: Day.MONDAY, period: 1, date: today } // Date-specific conflict
         ]
@@ -26,7 +25,6 @@ describe('GymClassScheduler with Date-Specific TimeSlots', () => {
       {
         id: 'class2',
         name: 'Pilates',
-        instructor: 'Jane',
         conflicts: [
           { day: Day.MONDAY, period: 2 } // Regular day-based conflict
         ]

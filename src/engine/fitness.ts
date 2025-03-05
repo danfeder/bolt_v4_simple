@@ -20,7 +20,6 @@ export const FITNESS_CONSTANTS = {
  * Represents different types of constraint violations that can occur in a schedule
  */
 export enum ViolationType {
-  INSTRUCTOR_CONFLICT,  // Same instructor scheduled at the same time
   TIME_CONFLICT,        // Class scheduled at a time it cannot be scheduled
   ROOM_CONFLICT,        // Too many classes scheduled for the same room
   OTHER                 // Other constraint violation
@@ -108,15 +107,14 @@ export class FitnessEvaluator {
   }
   
   /**
-   * Checks for basic scheduling violations like instructor conflicts
+   * Checks for basic scheduling violations like time conflicts
    * @param chromosome Chromosome to check
    * @param result Fitness result to update
    */
   private checkBasicViolations(chromosome: Chromosome, result: FitnessResult): void {
-    const instructorTimeSlots = new Map<string, Set<string>>();
     const assignments = chromosome.getGenes();
     
-    // Check for instructor conflicts
+    // Check if class is scheduled at a time it conflicts with
     for (const assignment of assignments) {
       const classInfo = this.classes.find(c => c.id === assignment.classId);
       
@@ -124,32 +122,6 @@ export class FitnessEvaluator {
         continue; // Skip if class not found
       }
       
-      const timeSlotKey = `${assignment.timeSlot.day}-${assignment.timeSlot.period}`;
-      
-      // Check if instructor is already scheduled at this time
-      if (!instructorTimeSlots.has(classInfo.instructor)) {
-        instructorTimeSlots.set(classInfo.instructor, new Set<string>());
-      }
-      
-      const instructorSlots = instructorTimeSlots.get(classInfo.instructor)!;
-      
-      if (instructorSlots.has(timeSlotKey)) {
-        // Instructor conflict - teaching two classes at the same time
-        result.hardConstraintViolations++;
-        result.fitnessScore -= FITNESS_CONSTANTS.HARD_CONSTRAINT_PENALTY;
-        
-        result.violations.push({
-          type: ViolationType.INSTRUCTOR_CONFLICT,
-          constraintId: 'instructor-conflict',
-          classId: assignment.classId,
-          timeSlot: assignment.timeSlot,
-          description: `Instructor ${classInfo.instructor} is scheduled to teach multiple classes at the same time`
-        });
-      }
-      
-      instructorSlots.add(timeSlotKey);
-      
-      // Check if class is scheduled at a time it conflicts with
       if (classInfo.conflicts.some(conflict => 
         areTimeSlotsEqual(conflict, assignment.timeSlot)
       )) {
@@ -211,44 +183,6 @@ export class FitnessEvaluator {
         
         return false;
       }
-    }
-    
-    // Classes taught by the same instructor should be on the same day
-    if (constraint.id === 'instructor-classes-same-day') {
-      const instructorClasses = new Map<string, Set<number>>();
-      
-      // Group classes by instructor and day
-      for (const assignment of assignments) {
-        const classInfo = this.classes.find(c => c.id === assignment.classId);
-        
-        if (!classInfo) {
-          continue;
-        }
-        
-        if (!instructorClasses.has(classInfo.instructor)) {
-          instructorClasses.set(classInfo.instructor, new Set<number>());
-        }
-        
-        instructorClasses.get(classInfo.instructor)!.add(assignment.timeSlot.day);
-      }
-      
-      // Check if all instructors have classes on at most one day
-      for (const [instructor, days] of instructorClasses.entries()) {
-        if (days.size > 1) {
-          if (constraint.type === ConstraintType.HARD) {
-            result.violations.push({
-              type: ViolationType.OTHER,
-              constraintId: constraint.id,
-              classId: '',
-              timeSlot: { day: 0, period: 0 },
-              description: `Instructor ${instructor} has classes on multiple days`
-            });
-          }
-          return false;
-        }
-      }
-      
-      return true;
     }
     
     // No more than N classes per day

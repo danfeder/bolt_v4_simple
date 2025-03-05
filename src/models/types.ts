@@ -25,7 +25,6 @@ export interface TimeSlot {
 export interface Class {
   id: string;
   name: string;
-  instructor: string; // Instructor who teaches this class
   conflicts: TimeSlot[];  // Periods when the class is not available (prep periods)
   preferences?: {
     preferred?: TimeSlot[];

@@ -8,13 +8,11 @@ describe('Population', () => {
     {
       id: 'class1',
       name: 'Yoga',
-      instructor: 'Instructor 1',
       conflicts: []
     },
     {
       id: 'class2',
       name: 'Pilates',
-      instructor: 'Instructor 2',
       conflicts: []
     }
   ];
