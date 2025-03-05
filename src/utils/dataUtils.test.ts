@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { dataUtils } from './dataUtils';
-import { Schedule, ScheduleRotation, Class } from '../models/types';
+import { Schedule, ScheduleRotation } from '../models/types';
 import { Day } from '../models/types';
 
 // Mock localStorage
@@ -37,12 +37,6 @@ describe('Schedule Rotation History Utilities', () => {
     ],
     startDate: new Date('2025-01-01')
   };
-
-  // Sample classes for testing
-  const sampleClasses: Class[] = [
-    { id: 'class1', name: 'Yoga', conflicts: [] },
-    { id: 'class2', name: 'Pilates', conflicts: [] }
-  ];
 
   // Clear localStorage before each test
   beforeEach(() => {
