@@ -298,7 +298,7 @@ export const dataUtils = {
         createdAt: new Date(rotation.createdAt),
         schedule: {
           ...rotation.schedule,
-          startDate: rotation.schedule.startDate ? new Date(rotation.schedule.startDate) : undefined
+          startDate: rotation.schedule.startDate ? new Date(rotation.schedule.startDate) : new Date()
         }
       }));
     } catch (error) {
