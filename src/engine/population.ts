@@ -57,6 +57,9 @@ export class Population {
    * @returns Chromosome at the specified index
    */
   getChromosomeAt(index: number): Chromosome {
+    if (index < 0 || index >= this.chromosomes.length) {
+      throw new Error(`Index ${index} is out of bounds. Population size is ${this.chromosomes.length}`);
+    }
     return this.chromosomes[index];
   }
   
@@ -133,32 +136,34 @@ export class Population {
    * @param fitness Optional fitness score for the chromosome
    */
   addChromosome(chromosome: Chromosome, fitness?: number): void {
-    if (fitness !== undefined) {
-      this.fitnessScores.set(chromosome, fitness);
+    if (!chromosome) {
+      throw new Error("Cannot add undefined chromosome to population");
     }
     
     if (this.chromosomes.length < this.size) {
-      // If population not at max size, simply add
+      // Add to population
       this.chromosomes.push(chromosome);
-    } else {
-      // Replace the worst chromosome
-      let worstChromosome = this.chromosomes[0];
-      let worstFitness = this.fitnessScores.get(worstChromosome) || 0;
       
-      for (const chrom of this.chromosomes) {
-        const chromFitness = this.fitnessScores.get(chrom) || 0;
-        if (chromFitness < worstFitness) {
-          worstFitness = chromFitness;
-          worstChromosome = chrom;
-        }
+      // Set fitness if provided
+      if (fitness !== undefined) {
+        this.fitnessScores.set(chromosome, fitness);
+      }
+    } else {
+      // Replace worst chromosome
+      this.sortByFitness();
+      
+      // Remove worst
+      const worstChromosome = this.chromosomes.pop();
+      if (worstChromosome) {
+        this.fitnessScores.delete(worstChromosome);
       }
       
-      // If the new chromosome is better than the worst, replace it
-      if (fitness === undefined || fitness > worstFitness) {
-        const index = this.chromosomes.indexOf(worstChromosome);
-        if (index !== -1) {
-          this.chromosomes[index] = chromosome;
-        }
+      // Add new chromosome
+      this.chromosomes.push(chromosome);
+      
+      // Set fitness if provided
+      if (fitness !== undefined) {
+        this.fitnessScores.set(chromosome, fitness);
       }
     }
   }

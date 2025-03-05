@@ -1,6 +1,5 @@
 import { Chromosome } from './chromosome';
 import { Class, Assignment, Constraint, ConstraintType, TimeSlot, Day, Period } from '../models/types';
-import { areTimeSlotsEqual } from '../utils/timeSlot';
 
 /**
  * Constants for fitness evaluation
@@ -13,7 +12,10 @@ export const FITNESS_CONSTANTS = {
   HARD_CONSTRAINT_PENALTY: 500,
   
   // Reward per satisfied soft constraint
-  SOFT_CONSTRAINT_REWARD: 50
+  SOFT_CONSTRAINT_REWARD: 50,
+  
+  // Penalty per unsatisfied soft constraint
+  SOFT_CONSTRAINT_PENALTY: 10
 };
 
 /**
@@ -22,7 +24,9 @@ export const FITNESS_CONSTANTS = {
 export enum ViolationType {
   TIME_CONFLICT,        // Class scheduled at a time it cannot be scheduled
   ROOM_CONFLICT,        // Too many classes scheduled for the same room
-  OTHER                 // Other constraint violation
+  OTHER,                // Other constraint violation
+  MAX_CLASSES_PER_DAY,  // Exceeded maximum classes per day
+  MAX_CLASSES_PER_WEEK  // Exceeded maximum classes per week
 }
 
 /**
@@ -47,10 +51,30 @@ export interface FitnessResult {
   hardConstraintViolations: number;
   
   // Number of soft constraints satisfied
-  softConstraintsSatisfied: number;
+  softConstraintSatisfaction: number;
   
   // Detailed list of constraint violations
   violations: ConstraintViolation[];
+}
+
+/**
+ * Utility function to check if two time slots are equal
+ * @param slot1 First time slot
+ * @param slot2 Second time slot 
+ * @returns True if the time slots are equal
+ */
+function areTimeSlotsEqual(slot1: TimeSlot, slot2: TimeSlot): boolean {
+  // If both slots have dates, compare the dates
+  if (slot1.date && slot2.date) {
+    const date1 = typeof slot1.date === 'string' ? new Date(slot1.date) : slot1.date;
+    const date2 = typeof slot2.date === 'string' ? new Date(slot2.date) : slot2.date;
+    
+    // If dates are equal and periods are equal, they are equal
+    return date1.getTime() === date2.getTime() && slot1.period === slot2.period;
+  }
+  
+  // Otherwise, compare day and period
+  return slot1.day === slot2.day && slot1.period === slot2.period;
 }
 
 /**
@@ -73,58 +97,214 @@ export class FitnessEvaluator {
    * @returns Fitness result containing score and violation details
    */
   evaluate(chromosome: Chromosome): FitnessResult {
+    // Create the result object
     const result: FitnessResult = {
-      fitnessScore: FITNESS_CONSTANTS.BASE_FITNESS,
+      fitnessScore: 100, // Start with perfect score
       hardConstraintViolations: 0,
-      softConstraintsSatisfied: 0,
+      softConstraintSatisfaction: 0,
       violations: []
     };
     
-    // Check for basic scheduling violations first
-    this.checkBasicViolations(chromosome, result);
+    console.log(`===== EVALUATING CHROMOSOME FITNESS =====`);
+    const genes = chromosome.getGenes();
+    console.log(`Chromosome has ${genes.length} assignments`);
     
-    // Evaluate all other constraints
-    for (const constraint of this.constraints) {
-      const isSatisfied = this.evaluateConstraint(constraint, chromosome, result);
+    // Get all class IDs being evaluated
+    const classIds = new Set(genes.map(gene => gene.classId));
+    console.log(`Evaluating ${classIds.size} unique classes`);
+    
+    // Count how many constraints we have of each type
+    const hardConstraintCount = Object.keys(this.constraints.hard || {}).length;
+    const softConstraintCount = Object.keys(this.constraints.soft || {}).length;
+    console.log(`Constraints: ${hardConstraintCount} hard, ${softConstraintCount} soft`);
+    
+    // Track how many constraints we satisfy
+    let hardConstraintsSatisfied = 0;
+    let softConstraintsSatisfied = 0;
+    
+    // Process hard constraints first
+    if (this.constraints.hard) {
+      console.log(`Processing ${hardConstraintCount} hard constraints...`);
       
-      if (constraint.type === ConstraintType.HARD) {
-        if (!isSatisfied) {
+      // Check if we're enforcing maximum classes per day
+      if (this.constraints.hard.dailyMaxClasses !== undefined) {
+        const maxPerDay = this.constraints.hard.dailyMaxClasses;
+        console.log(`Checking dailyMaxClasses constraint: max=${maxPerDay}`);
+        
+        // Count classes per day
+        const classesByDay: Record<string, number> = {
+          [Day.MONDAY]: 0,
+          [Day.TUESDAY]: 0,
+          [Day.WEDNESDAY]: 0,
+          [Day.THURSDAY]: 0,
+          [Day.FRIDAY]: 0
+        };
+        
+        genes.forEach(gene => {
+          const day = gene.timeSlot.day;
+          if (day !== Day.UNASSIGNED) {
+            classesByDay[day]++;
+          }
+        });
+        
+        console.log(`Classes per day:`, classesByDay);
+        
+        // Check if any day exceeds the maximum
+        let exceededMaxDay = false;
+        Object.entries(classesByDay).forEach(([day, count]) => {
+          if (count > maxPerDay) {
+            exceededMaxDay = true;
+            console.log(`Violation: Day ${day} has ${count} classes, exceeding max=${maxPerDay}`);
+            
+            result.violations.push({
+              type: ViolationType.MAX_CLASSES_PER_DAY,
+              constraintId: 'daily-max-classes',
+              classId: '', // No specific class
+              timeSlot: { day: day as Day, period: 0 as Period }, // Just to indicate the day
+              description: `Day ${day} has ${count} classes, exceeding maximum of ${maxPerDay}`
+            });
+          }
+        });
+        
+        if (exceededMaxDay) {
           result.hardConstraintViolations++;
-          result.fitnessScore -= FITNESS_CONSTANTS.HARD_CONSTRAINT_PENALTY;
+          console.log(`dailyMaxClasses constraint violated`);
+        } else {
+          hardConstraintsSatisfied++;
+          console.log(`dailyMaxClasses constraint satisfied`);
         }
-      } else { // Soft constraint
-        if (isSatisfied) {
-          result.softConstraintsSatisfied++;
-          result.fitnessScore += FITNESS_CONSTANTS.SOFT_CONSTRAINT_REWARD;
+      }
+      
+      // Check if we're enforcing maximum classes per week
+      if (this.constraints.hard.weeklyMaxClasses !== undefined) {
+        const maxPerWeek = this.constraints.hard.weeklyMaxClasses;
+        console.log(`Checking weeklyMaxClasses constraint: max=${maxPerWeek}`);
+        
+        const assignedClassesCount = genes.length;
+        
+        if (assignedClassesCount > maxPerWeek) {
+          result.hardConstraintViolations++;
+          console.log(`Violation: Total of ${assignedClassesCount} classes exceeds weekly max=${maxPerWeek}`);
+          
+          result.violations.push({
+            type: ViolationType.MAX_CLASSES_PER_WEEK,
+            constraintId: 'weekly-max-classes',
+            classId: '', // No specific class
+            timeSlot: { day: Day.UNASSIGNED, period: 0 as Period }, // No specific time
+            description: `Total of ${assignedClassesCount} classes exceeds weekly maximum of ${maxPerWeek}`
+          });
+        } else {
+          hardConstraintsSatisfied++;
+          console.log(`weeklyMaxClasses constraint satisfied`);
         }
       }
     }
     
-    // Fitness score can't be negative
+    // Process soft constraints
+    if (this.constraints.soft) {
+      console.log(`Processing ${softConstraintCount} soft constraints...`);
+      
+      // Check if we're enforcing minimum classes per day
+      if (this.constraints.soft.dailyMinClasses !== undefined) {
+        const minPerDay = this.constraints.soft.dailyMinClasses;
+        console.log(`Checking dailyMinClasses constraint: min=${minPerDay}`);
+        
+        // Count classes per day
+        const classesByDay: Record<string, number> = {
+          [Day.MONDAY]: 0,
+          [Day.TUESDAY]: 0,
+          [Day.WEDNESDAY]: 0,
+          [Day.THURSDAY]: 0,
+          [Day.FRIDAY]: 0
+        };
+        
+        genes.forEach(gene => {
+          const day = gene.timeSlot.day;
+          if (day !== Day.UNASSIGNED) {
+            classesByDay[day]++;
+          }
+        });
+        
+        console.log(`Classes per day:`, classesByDay);
+        
+        // Check if any day is below the minimum
+        let belowMinDay = false;
+        Object.entries(classesByDay).forEach(([day, count]) => {
+          if (count < minPerDay) {
+            belowMinDay = true;
+            console.log(`Violation: Day ${day} has ${count} classes, below min=${minPerDay}`);
+            
+            result.violations.push({
+              type: ViolationType.OTHER,
+              constraintId: 'daily-min-classes',
+              classId: '', // No specific class
+              timeSlot: { day: day as Day, period: 0 as Period }, // Just to indicate the day
+              description: `Day ${day} has ${count} classes, below minimum of ${minPerDay}`
+            });
+          }
+        });
+        
+        if (belowMinDay) {
+          result.fitnessScore -= FITNESS_CONSTANTS.SOFT_CONSTRAINT_PENALTY;
+          console.log(`dailyMinClasses constraint violated`);
+        } else {
+          softConstraintsSatisfied++;
+          console.log(`dailyMinClasses constraint satisfied`);
+        }
+      }
+    }
+    
+    // Check basic violations
+    this.checkBasicViolations(chromosome, result);
+    
+    // Calculate soft constraint satisfaction rate
+    result.softConstraintSatisfaction = softConstraintCount > 0 
+      ? softConstraintsSatisfied / softConstraintCount 
+      : 1.0;
+    
+    // Calculate fitness score
     result.fitnessScore = Math.max(0, result.fitnessScore);
+    
+    console.log(`===== FITNESS EVALUATION RESULTS =====`);
+    console.log(`Hard constraint violations: ${result.hardConstraintViolations}`);
+    console.log(`Soft constraint satisfaction: ${result.softConstraintSatisfaction.toFixed(2)}`);
+    console.log(`Fitness score: ${result.fitnessScore.toFixed(2)}`);
+    console.log(`Violations: ${result.violations.length}`);
+    
+    if (result.violations.length > 0) {
+      console.log('Violation details:', result.violations);
+    }
     
     return result;
   }
   
-  /**
-   * Checks for basic scheduling violations like time conflicts
-   * @param chromosome Chromosome to check
-   * @param result Fitness result to update
-   */
   private checkBasicViolations(chromosome: Chromosome, result: FitnessResult): void {
     const assignments = chromosome.getGenes();
+    
+    console.log(`Checking basic violations for ${assignments.length} assignments`);
     
     // Check if class is scheduled at a time it conflicts with
     for (const assignment of assignments) {
       const classInfo = this.classes.find(c => c.id === assignment.classId);
       
       if (!classInfo) {
+        console.log(`Class ${assignment.classId} not found in classes array`);
         continue; // Skip if class not found
       }
+      
+      // Skip if class has no conflicts
+      if (!classInfo.conflicts || classInfo.conflicts.length === 0) {
+        continue;
+      }
+      
+      console.log(`Checking conflicts for class ${classInfo.name} (${classInfo.id})`);
+      console.log(`Class has ${classInfo.conflicts.length} conflicts`);
       
       if (classInfo.conflicts.some(conflict => 
         areTimeSlotsEqual(conflict, assignment.timeSlot)
       )) {
+        console.log(`Conflict found for class ${classInfo.name} at ${assignment.timeSlot.day} period ${assignment.timeSlot.period}`);
+        
         result.hardConstraintViolations++;
         result.fitnessScore -= FITNESS_CONSTANTS.HARD_CONSTRAINT_PENALTY;
         
@@ -138,87 +318,7 @@ export class FitnessEvaluator {
       }
     }
   }
-  
-  /**
-   * Evaluates a single constraint against a chromosome
-   * @param constraint Constraint to evaluate
-   * @param chromosome Chromosome to evaluate against
-   * @param result Fitness result to update with violations
-   * @returns True if the constraint is satisfied
-   */
-  private evaluateConstraint(
-    constraint: Constraint, 
-    chromosome: Chromosome,
-    result: FitnessResult
-  ): boolean {
-    const assignments = chromosome.getGenes();
-    
-    // Depending on the constraint definition, implement the specific check
-    // For now, we'll implement a few common constraints
-    
-    // Specific class must be at a specific time
-    if (constraint.id.startsWith('class-at-time-')) {
-      const classId = constraint.parameters?.classId as string;
-      const targetDay = constraint.parameters?.day as Day;
-      const targetPeriod = constraint.parameters?.period as Period;
-      
-      if (classId && targetDay !== undefined && targetPeriod !== undefined) {
-        const assignment = assignments.find(a => a.classId === classId);
-        
-        if (assignment && 
-            assignment.timeSlot.day === targetDay && 
-            assignment.timeSlot.period === targetPeriod) {
-          return true;
-        }
-        
-        if (constraint.type === ConstraintType.HARD) {
-          result.violations.push({
-            type: ViolationType.TIME_CONFLICT,
-            constraintId: constraint.id,
-            classId,
-            timeSlot: { day: targetDay, period: targetPeriod },
-            description: `Class ${classId} must be scheduled at day ${targetDay}, period ${targetPeriod}`
-          });
-        }
-        
-        return false;
-      }
-    }
-    
-    // No more than N classes per day
-    if (constraint.id === 'max-classes-per-day') {
-      const maxClasses = constraint.parameters?.maxClasses as number || 10;
-      const classesByDay = new Map<Day, number>();
-      
-      // Count classes per day
-      for (const assignment of assignments) {
-        const day = assignment.timeSlot.day;
-        classesByDay.set(day, (classesByDay.get(day) || 0) + 1);
-      }
-      
-      // Check if any day exceeds the maximum
-      for (const [day, count] of classesByDay.entries()) {
-        if (count > maxClasses) {
-          if (constraint.type === ConstraintType.HARD) {
-            result.violations.push({
-              type: ViolationType.OTHER,
-              constraintId: constraint.id,
-              classId: '',
-              timeSlot: { day, period: 0 as Period },
-              description: `Day ${day} has ${count} classes, exceeding the maximum of ${maxClasses}`
-            });
-          }
-          return false;
-        }
-      }
-      
-      return true;
-    }
-    
-    // Default to assuming the constraint is satisfied
-    return true;
-  }
-  
+
   /**
    * Gets the number of hard constraint violations for a chromosome
    * @param chromosome Chromosome to evaluate
@@ -226,6 +326,15 @@ export class FitnessEvaluator {
    */
   getHardConstraintViolations(chromosome: Chromosome): number {
     return this.evaluate(chromosome).hardConstraintViolations;
+  }
+
+  /**
+   * Gets the fitness score for a chromosome
+   * @param chromosome Chromosome to evaluate
+   * @returns Fitness score between 0 and 100
+   */
+  getFitness(chromosome: Chromosome): number {
+    return this.evaluate(chromosome).fitnessScore;
   }
   
   /**
@@ -265,5 +374,13 @@ export class FitnessEvaluator {
       violationDetails: result.violations.map(v => v.description),
       fitnessScore: result.fitnessScore
     };
+  }
+
+  /**
+   * Gets the constraints used by this evaluator
+   * @returns Array of constraints
+   */
+  getConstraints(): Constraint[] {
+    return this.constraints;
   }
 }

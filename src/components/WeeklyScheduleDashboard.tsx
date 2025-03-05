@@ -14,7 +14,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogContentText,
-  DialogActions
+  DialogActions,
+  Stack
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
@@ -28,9 +29,20 @@ import DraggableClassItem, { DragItem } from './DraggableClassItem';
 import DroppableCell from './DroppableCell';
 import TemporaryDropZone from './TemporaryDropZone';
 import { validateClassMove, moveClassInSchedule } from '../utils/dragDropUtils';
-import { isSameDay, parseISO } from 'date-fns';
+import { isSameDay, parseISO, format, addDays } from 'date-fns';
 import { getDayDate, organizeScheduleIntoWeeks } from '../utils/scheduleUtils';
 import './WeeklyScheduleDashboard.css';
+
+// Helper function to format a date
+const formatDate = (date?: Date | string | null): string => {
+  if (!date) return 'Unknown date';
+  
+  // Parse string dates
+  const dateObj = typeof date === 'string' ? parseISO(date) : date;
+  
+  // Format the date
+  return format(dateObj, 'MM/dd/yyyy');
+};
 
 // Detect if the device has touch support
 const isTouchDevice = () => {
@@ -48,8 +60,21 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
 }) => {
   const [currentSchedule, setCurrentSchedule] = useState<Schedule | null>(null);
   const [classes, setClasses] = useState<Class[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tempClasses, setTempClasses] = useState<{
+    classId: string;
+    classObj: Class;
+  }[]>([]);
+  
+  // State for tracking the current week in the rotation
+  const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
+  const [rotationWeeks, setRotationWeeks] = useState<RotationWeek[]>([]);
+  const [dateRange, setDateRange] = useState<{start: Date, end: Date} | null>(null);
+
+  // State for error handling and loading
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  
+  // State for notification
   const [notification, setNotification] = useState<{
     open: boolean;
     message: string;
@@ -65,17 +90,18 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
   const [reOptimizeDialogOpen, setReOptimizeDialogOpen] = useState(false);
   const [manuallyAdjustedClasses, setManuallyAdjustedClasses] = useState<Set<string>>(new Set());
   
-  // State for the temporary storage zone
-  const [tempClasses, setTempClasses] = useState<{
-    classId: string;
-    classObj: Class;
-  }[]>([]);
+  // Dialog states
+  const [constraintsDialogOpen, setConstraintsDialogOpen] = useState(false);
   
-  // State for tracking the current week in the rotation
-  const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
-  const [rotationWeeks, setRotationWeeks] = useState<RotationWeek[]>([]);
-  const [dateRange, setDateRange] = useState<{start: Date, end: Date} | null>(null);
-
+  // Dialog handlers
+  const handleConstraintsDialogOpen = () => {
+    setConstraintsDialogOpen(true);
+  };
+  
+  const handleConstraintsDialogClose = () => {
+    setConstraintsDialogOpen(false);
+  };
+  
   // Load schedule data
   useEffect(() => {
     const loadScheduleData = async () => {
@@ -84,6 +110,7 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
         
         // Set classes
         const loadedClasses = await schedulerApi.getClasses();
+        console.log('Loaded classes count:', loadedClasses.length);
         setClasses(loadedClasses);
         
         // Load schedule (either from props or from storage)
@@ -104,16 +131,22 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
             scheduleData.assignments = [];
           }
           
+          console.log('Loaded schedule data:', scheduleData);
+          
           // Ensure the schedule has weeks organized
-          if (!scheduleData.weeks) {
+          if (!scheduleData.weeks || scheduleData.weeks.length === 0) {
+            console.log('Schedule has no weeks, attempting to organize it');
             try {
-              const weeks = organizeScheduleIntoWeeks(scheduleData);
-              scheduleData = {
-                ...scheduleData,
-                weeks: weeks
-              };
+              const organizedSchedule = organizeScheduleIntoWeeks(scheduleData);
+              console.log('Organized schedule:', organizedSchedule);
+              if (organizedSchedule.weeks && organizedSchedule.weeks.length > 0) {
+                scheduleData = organizedSchedule;
+                console.log('Successfully organized schedule into weeks:', scheduleData.weeks.length);
+              } else {
+                console.warn('Failed to organize schedule into weeks');
+              }
             } catch (error) {
-              console.warn('Could not organize schedule into weeks:', error);
+              console.error('Error organizing schedule into weeks:', error);
               // Continue with the schedule even if weeks organization fails
             }
           }
@@ -122,12 +155,18 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
           
           // Set up rotation weeks
           if (scheduleData.weeks && scheduleData.weeks.length > 0) {
+            console.log('Setting rotation weeks:', scheduleData.weeks.length);
             setRotationWeeks(scheduleData.weeks);
+            setCurrentWeekIndex(0);
             setDateRange({
               start: scheduleData.startDate,
               end: scheduleData.endDate || scheduleData.weeks[scheduleData.weeks.length - 1].endDate
             });
+          } else {
+            console.warn('Schedule has no weeks after loading');
           }
+        } else {
+          console.warn('No schedule data loaded');
         }
         
         setLoading(false);
@@ -273,12 +312,18 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
 
   // Find class assignment for a given time slot
   const findClassForTimeSlot = (day: Day, period: Period): string | null => {
-    if (!currentSchedule) return null;
+    if (!currentSchedule) {
+      console.log('No current schedule available');
+      return null;
+    }
     
     // Make sure assignments exist
     if (!currentSchedule.assignments || !Array.isArray(currentSchedule.assignments)) {
+      console.log('No assignments array in schedule');
       return null;
     }
+    
+    console.log(`Looking for class at ${day} period ${period}. Total assignments: ${currentSchedule.assignments.length}`);
     
     // Get the date for this time slot based on the current week
     const slotDate = getDayDate(getCurrentWeekStartDate(), day);
@@ -297,6 +342,10 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
         return a.timeSlot.day === day && a.timeSlot.period === period;
       }
     );
+    
+    if (assignment) {
+      console.log(`Found assignment for class ${assignment.classId} at ${day} period ${period}`);
+    }
     
     return assignment ? assignment.classId : null;
   };
@@ -341,52 +390,78 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
   };
   
   // Format a date for display - updated to use abbreviated format
-  const formatDate = (date: Date): string => {
-    const options: Intl.DateTimeFormatOptions = { 
-      month: 'short', 
-      day: 'numeric'
-    };
-    return new Date(date).toLocaleDateString(undefined, options);
-  };
-
-  // Format day header with abbreviated day name and date
-  const formatDayHeader = (day: Day, currentWeekStartDate: Date): string => {
+  const formatDayHeader = (day: Day, currentWeekStartDate: Date | string): string => {
     const dayDate = getDayDate(currentWeekStartDate, day);
     // Use the first 3 letters of the day name (safely)
     const dayName = day && typeof day === 'string' ? day.substring(0, 3) : '';
     const formattedDate = formatDate(dayDate);
+    console.log(`Formatting day header for ${day}: ${dayName} ${formattedDate}`);
     return `${dayName} ${formattedDate}`;
   };
 
   // Get the current week's start date (Monday)
   const getCurrentWeekStartDate = (): Date => {
+    console.log('Getting current week start date, currentWeekIndex:', currentWeekIndex);
+    console.log('Rotation weeks length:', rotationWeeks.length);
+    
     if (!rotationWeeks.length || !rotationWeeks[currentWeekIndex]) {
+      console.log('No rotation weeks or current week not found, using fallback date');
       return new Date(); // Fallback to today
     }
-    return rotationWeeks[currentWeekIndex].startDate;
+    
+    const startDate = rotationWeeks[currentWeekIndex].startDate;
+    console.log('Current week start date (raw):', startDate);
+    const parsedDate = typeof startDate === 'string' ? parseISO(startDate) : startDate;
+    console.log('Current week start date (parsed):', parsedDate);
+    return parsedDate;
   };
 
   // Generate schedule
-  const handleGenerateSchedule = () => {
+  const handleGenerateSchedule = async () => {
     try {
       setLoading(true);
       
       // Get the next Monday as the default start date
       const startDate = schedulerApi.getNextMonday();
+      console.log('Generating schedule starting from:', startDate);
       
       // Generate a new schedule
       const newSchedule = schedulerApi.generateSchedule(startDate);
+      console.log('Generated schedule:', newSchedule);
+      console.log('Assignments count:', newSchedule.assignments?.length || 0);
       
       setCurrentSchedule(newSchedule);
       
       // Set up rotation weeks
       if (newSchedule.weeks && newSchedule.weeks.length > 0) {
+        console.log('Schedule has weeks:', newSchedule.weeks.length);
         setRotationWeeks(newSchedule.weeks);
         setCurrentWeekIndex(0);
         setDateRange({
           start: newSchedule.startDate,
           end: newSchedule.endDate || newSchedule.weeks[newSchedule.weeks.length - 1].endDate
         });
+      } else {
+        console.warn('Generated schedule does not have weeks organized');
+        console.log('Attempting to organize schedule into weeks manually');
+        try {
+          const organizedSchedule = organizeScheduleIntoWeeks(newSchedule);
+          console.log('Organized schedule:', organizedSchedule);
+          if (organizedSchedule.weeks && organizedSchedule.weeks.length > 0) {
+            console.log('Successfully organized schedule into weeks:', organizedSchedule.weeks.length);
+            setRotationWeeks(organizedSchedule.weeks);
+            setCurrentWeekIndex(0);
+            setDateRange({
+              start: organizedSchedule.startDate,
+              end: organizedSchedule.endDate
+            });
+            setCurrentSchedule(organizedSchedule);
+          } else {
+            console.error('Failed to organize schedule into weeks');
+          }
+        } catch (error) {
+          console.error('Error organizing schedule into weeks:', error);
+        }
       }
       
       setNotification({
@@ -505,6 +580,130 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
     }));
   };
 
+  const handleDragEnd = (result: any) => {
+    const { destination, source, draggableId } = result;
+    
+    // Return early if dropped outside a droppable area or at the same position
+    if (!destination || 
+        (destination.droppableId === source.droppableId && 
+         destination.index === source.index)) {
+      return;
+    }
+    
+    try {
+      // Parse the source and destination IDs to get day and period
+      const sourceMatch = source.droppableId.match(/day-([^-]+)-period-(\d+)(?:-date-(.+))?/);
+      const destMatch = destination.droppableId.match(/day-([^-]+)-period-(\d+)(?:-date-(.+))?/);
+      
+      if (!sourceMatch || !destMatch) {
+        console.error('Invalid droppable IDs', { source: source.droppableId, destination: destination.droppableId });
+        return;
+      }
+      
+      const sourceTimeSlot: TimeSlot = {
+        day: sourceMatch[1] as Day,
+        period: parseInt(sourceMatch[2]) as Period,
+        date: sourceMatch[3] ? new Date(sourceMatch[3]) : undefined
+      };
+      
+      const destTimeSlot: TimeSlot = {
+        day: destMatch[1] as Day,
+        period: parseInt(destMatch[2]) as Period,
+        date: destMatch[3] ? new Date(destMatch[3]) : undefined
+      };
+      
+      console.log('Moving class from:', sourceTimeSlot, 'to:', destTimeSlot);
+      
+      // Get the assignment being moved
+      const classId = draggableId.replace('class-', '');
+      const classItem = classes.find(c => c.id === classId);
+      
+      if (!classItem) {
+        console.error('Class not found in map:', classId);
+        return;
+      }
+      
+      // Check if the move is valid according to the constraints
+      const constraints = schedulerApi.getConstraints();
+      console.log('Validating move against constraints:', constraints);
+      
+      // Check personal conflicts
+      const personalConflicts = constraints?.hard?.personalConflicts || [];
+      const hasPersonalConflict = personalConflicts.some(conflict => {
+        if (conflict.date && destTimeSlot.date) {
+          const conflictDate = typeof conflict.date === 'string' 
+            ? new Date(conflict.date) 
+            : conflict.date;
+            
+          const destDate = typeof destTimeSlot.date === 'string'
+            ? new Date(destTimeSlot.date)
+            : destTimeSlot.date;
+            
+          // Check if same date and same period
+          return conflictDate.getTime() === destDate.getTime() && 
+                 conflict.period === destTimeSlot.period;
+        }
+        
+        // Otherwise just check day and period
+        return conflict.day === destTimeSlot.day && 
+               conflict.period === destTimeSlot.period;
+      });
+      
+      if (hasPersonalConflict) {
+        console.error('Cannot move class to a personal conflict time slot');
+        showNotification('Cannot schedule a class during a personal conflict time', 'error');
+        return;
+      }
+      
+      // Validation with existing util function
+      const currentScheduleSnapshot = currentSchedule ? { ...currentSchedule } : undefined;
+      const { isValid, message } = validateClassMove(
+        currentScheduleSnapshot, 
+        classItem, 
+        destTimeSlot
+      );
+      
+      if (!isValid) {
+        console.error('Invalid move:', message);
+        showNotification(message, 'error');
+        return;
+      }
+      
+      // Update the schedule
+      const updatedSchedule = moveClassInSchedule(
+        currentSchedule,
+        classId,
+        destTimeSlot
+      );
+      
+      // Add this class to the manually adjusted classes set
+      setManuallyAdjustedClasses(prev => {
+        const updated = new Set(prev);
+        updated.add(classId);
+        return updated;
+      });
+      
+      // Update the schedule in state and API
+      updateSchedule(updatedSchedule);
+      
+      // Check if the class was in temp storage and remove it if it was
+      if (tempClasses.some(tempClass => tempClass.classId === classId)) {
+        setTempClasses(prev => prev.filter(tempClass => tempClass.classId !== classId));
+      }
+      
+      // Get class name for better feedback
+      const className = classItem ? classItem.name : classId;
+      
+      // Format date for feedback message
+      const dateStr = formatDate(destTimeSlot.date);
+      
+      // Show success notification with enhanced details
+      showNotification(`${className} moved to ${destTimeSlot.day}, Period ${destTimeSlot.period + 1} (${dateStr})`, 'success');
+    } catch (error) {
+      console.error('Error handling drag end:', error);
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
@@ -523,253 +722,448 @@ const WeeklyScheduleDashboard: React.FC<WeeklyScheduleDashboardProps> = ({
 
   return (
     <Box sx={{ p: 2 }}>
-      <Typography variant="h4" gutterBottom>
-        Weekly Schedule Dashboard
-      </Typography>
-      
-      {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-          <CircularProgress />
-        </Box>
-      )}
-      
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-      
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Button 
-          variant="contained" 
-          color="primary" 
-          onClick={handleGenerateSchedule}
-          disabled={loading}
-        >
-          Generate Schedule
-        </Button>
+      <Box className="schedule-dashboard-container" 
+        sx={{ 
+          display: 'flex', 
+          flexDirection: 'column',
+          height: '100%',
+          position: 'relative'
+        }}>
         
-        <Button 
-          variant="outlined" 
-          color="primary" 
-          onClick={handleReOptimize}
-          disabled={!currentSchedule || loading}
-        >
-          Re-Optimize Schedule
-        </Button>
-      </Box>
-      
-      {!currentSchedule && (
-        <Alert severity="warning" sx={{ mt: 2, mb: 3 }}>
-          No schedule available. Please use the "Generate Schedule" button above to create a new schedule.
-        </Alert>
-      )}
-      
-      {currentSchedule && rotationWeeks.length > 0 && (
-        <Paper elevation={3} sx={{ p: 2, mb: 3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Button 
-              onClick={goToPreviousWeek} 
-              disabled={currentWeekIndex === 0}
-              startIcon={<ArrowBackIcon />}
+        <Box className="schedule-controls" sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between',
+          padding: '8px 16px',
+          borderBottom: '1px solid #e0e0e0'
+        }}>
+          <Typography 
+            variant="h6" 
+            component="h2"
+            sx={{
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          >
+            Weekly Schedule
+            {loading && <CircularProgress size={20} sx={{ ml: 2 }} />}
+          </Typography>
+          
+          <Stack direction="row" spacing={2}>
+            {/* Debug button to view constraints and regenerate schedule */}
+            <Button
               variant="outlined"
+              color="warning"
               size="small"
+              onClick={() => {
+                // Get the current constraints
+                const constraints = schedulerApi.getConstraints();
+                console.log('Current constraints:', constraints);
+                
+                // Log some stats about the current schedule
+                console.log('Current schedule:', currentSchedule);
+                if (currentSchedule) {
+                  console.log('Assignments count:', currentSchedule.assignments?.length || 0);
+                  console.log('Hard constraint violations:', currentSchedule.hardConstraintViolations || 0);
+                  console.log('Soft constraint satisfaction:', currentSchedule.softConstraintSatisfaction || 0);
+                  console.log('Fitness score:', currentSchedule.fitness || 0);
+                  
+                  // Check for daily max classes violations
+                  if (constraints?.hard?.dailyMaxClasses) {
+                    const maxClassesPerDay = constraints.hard.dailyMaxClasses;
+                    
+                    // Count classes per day in the current schedule
+                    const classesByDay = new Map<Day, number>();
+                    
+                    // Initialize all days with 0
+                    for (const day of Object.values(Day)) {
+                      if (day !== Day.UNASSIGNED) {
+                        classesByDay.set(day as Day, 0);
+                      }
+                    }
+                    
+                    // Count classes per day
+                    currentSchedule.assignments?.forEach(a => {
+                      const day = a.timeSlot.day;
+                      classesByDay.set(day, (classesByDay.get(day) || 0) + 1);
+                    });
+                    
+                    console.log('Classes by day:', Object.fromEntries(classesByDay));
+                    
+                    // Check if any day exceeds the maximum
+                    let maxClassesViolation = false;
+                    for (const [day, count] of classesByDay.entries()) {
+                      if (count > maxClassesPerDay) {
+                        console.log(`Violation: Day ${day} has ${count} classes, exceeding max of ${maxClassesPerDay}`);
+                        maxClassesViolation = true;
+                      }
+                    }
+                    
+                    if (!maxClassesViolation) {
+                      console.log(`Daily max classes constraint (${maxClassesPerDay}) is satisfied`);
+                    }
+                  }
+                  
+                  // Check for weekly max classes violations
+                  if (constraints?.hard?.weeklyMaxClasses) {
+                    const maxClassesPerWeek = constraints.hard.weeklyMaxClasses;
+                    const totalClasses = currentSchedule.assignments?.length || 0;
+                    
+                    if (totalClasses > maxClassesPerWeek) {
+                      console.log(`Violation: Schedule has ${totalClasses} classes, exceeding weekly max of ${maxClassesPerWeek}`);
+                    } else {
+                      console.log(`Weekly max classes constraint (${maxClassesPerWeek}) is satisfied`);
+                    }
+                  }
+                  
+                  // Check for personal conflicts
+                  if (constraints?.hard?.personalConflicts?.length) {
+                    console.log(`Checking ${constraints.hard.personalConflicts.length} personal conflicts`);
+                    
+                    let personalConflictViolation = false;
+                    for (const conflict of constraints.hard.personalConflicts) {
+                      // Check if any class is scheduled during this personal conflict
+                      const conflictFound = currentSchedule.assignments?.some(a => 
+                        a.timeSlot.day === conflict.day && a.timeSlot.period === conflict.period
+                      );
+                      
+                      if (conflictFound) {
+                        console.log(`Violation: Personal conflict at day=${conflict.day}, period=${conflict.period}`);
+                        personalConflictViolation = true;
+                      }
+                    }
+                    
+                    if (!personalConflictViolation) {
+                      console.log(`All personal conflict constraints are satisfied`);
+                    }
+                  }
+                }
+                
+                // Generate a new schedule with the same start date
+                let startDate = new Date();
+                if (currentSchedule && currentSchedule.startDate) {
+                  startDate = typeof currentSchedule.startDate === 'string' 
+                    ? parseISO(currentSchedule.startDate) 
+                    : currentSchedule.startDate;
+                }
+                
+                // Generate the schedule
+                try {
+                  const newSchedule = schedulerApi.generateSchedule(startDate);
+                  console.log('New schedule generated:', newSchedule);
+                  setCurrentSchedule(newSchedule);
+                  
+                  // Set up rotation weeks
+                  if (newSchedule.weeks && newSchedule.weeks.length > 0) {
+                    console.log('Setting rotation weeks:', newSchedule.weeks.length);
+                    setRotationWeeks(newSchedule.weeks);
+                    setCurrentWeekIndex(0);
+                    setDateRange({
+                      start: newSchedule.startDate,
+                      end: newSchedule.endDate || newSchedule.weeks[newSchedule.weeks.length - 1].endDate
+                    });
+                  }
+                } catch (error) {
+                  console.error('Error generating schedule:', error);
+                  setError('Failed to generate schedule');
+                }
+              }}
             >
-              Previous Week
+              Debug
+            </Button>
+          
+            <Button 
+              variant="outlined" 
+              color="primary" 
+              size="small"
+              onClick={handleConstraintsDialogOpen}
+            >
+              Constraints
             </Button>
             
-            <Typography variant="h6">
-              {rotationWeeks[currentWeekIndex] ? 
-                `Week ${rotationWeeks[currentWeekIndex].weekNumber}: ${getFormattedDateRange()}` : 
-                'No schedule data'}
-            </Typography>
+            <Button 
+              variant="contained" 
+              color="primary" 
+              size="small"
+              onClick={handleGenerateSchedule}
+            >
+              Generate
+            </Button>
+          </Stack>
+        </Box>
+        
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="h4" gutterBottom>
+            Weekly Schedule Dashboard
+          </Typography>
+          
+          {loading && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+              <CircularProgress />
+            </Box>
+          )}
+          
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+          
+          <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Button 
+              variant="contained" 
+              color="primary" 
+              onClick={handleGenerateSchedule}
+              disabled={loading}
+            >
+              Generate Schedule
+            </Button>
             
             <Button 
-              onClick={goToNextWeek} 
-              disabled={currentWeekIndex >= rotationWeeks.length - 1}
-              endIcon={<ArrowForwardIcon />}
-              variant="outlined"
-              size="small"
+              variant="outlined" 
+              color="primary" 
+              onClick={handleReOptimize}
+              disabled={!currentSchedule || loading}
             >
-              Next Week
+              Re-Optimize Schedule
             </Button>
           </Box>
           
-          <Divider sx={{ mb: 2 }} />
+          {!currentSchedule && (
+            <Alert severity="warning" sx={{ mt: 2, mb: 3 }}>
+              No schedule available. Please use the "Generate Schedule" button above to create a new schedule.
+            </Alert>
+          )}
           
-          <DndProvider backend={isTouchDevice() ? TouchBackend : HTML5Backend}>
-            <Grid container spacing={1} className="schedule-grid">
-              {/* Header row with day names and dates */}
-              <Grid item xs={1}>
-                <Box sx={{ height: '50px' }}></Box>
-              </Grid>
-              {DAYS_OF_WEEK.map(day => (
-                <Grid item xs key={day}>
-                  <Box 
-                    sx={{ 
-                      textAlign: 'center', 
-                      fontWeight: 'bold',
-                      p: 1,
-                      backgroundColor: 'primary.light',
-                      borderRadius: '4px 4px 0 0',
-                      color: 'primary.contrastText'
-                    }}
-                  >
-                    {formatDayHeader(day as Day, getCurrentWeekStartDate())}
-                  </Box>
-                </Grid>
-              ))}
+          {currentSchedule && rotationWeeks.length > 0 && (
+            <Paper elevation={3} sx={{ p: 2, mb: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Button 
+                  onClick={goToPreviousWeek} 
+                  disabled={currentWeekIndex === 0}
+                  startIcon={<ArrowBackIcon />}
+                  variant="outlined"
+                  size="small"
+                >
+                  Previous Week
+                </Button>
+                
+                <Typography variant="h6">
+                  {rotationWeeks[currentWeekIndex] ? 
+                    `Week ${rotationWeeks[currentWeekIndex].weekNumber}: ${getFormattedDateRange()}` : 
+                    'No schedule data'}
+                </Typography>
+                
+                <Button 
+                  onClick={goToNextWeek} 
+                  disabled={currentWeekIndex >= rotationWeeks.length - 1}
+                  endIcon={<ArrowForwardIcon />}
+                  variant="outlined"
+                  size="small"
+                >
+                  Next Week
+                </Button>
+              </Box>
               
-              {/* Schedule grid */}
-              {Array.from({ length: PERIODS_PER_DAY }).map((_, periodIndex) => (
-                <React.Fragment key={periodIndex}>
-                  {/* Period label */}
-                  <Grid item xs={1}>
-                    <Box 
-                      sx={{ 
-                        display: 'flex', 
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: '100px',
-                        backgroundColor: 'grey.100',
-                        p: 1,
-                        fontWeight: 'medium'
-                      }}
-                    >
-                      Period {periodIndex + 1}
-                    </Box>
-                  </Grid>
-                  
-                  {/* Day cells */}
-                  {DAYS_OF_WEEK.map(day => {
-                    const classId = findClassForTimeSlot(day as Day, periodIndex as Period);
-                    const classObj = classId ? getClassById(classId) : undefined;
-                    const isEmpty = !classId;
+              <Divider sx={{ mb: 2 }} />
+              
+              <DndProvider backend={isTouchDevice() ? TouchBackend : HTML5Backend}>
+                <Box sx={{ width: '100%', overflowX: 'auto' }}>
+                  {/* Day headers row */}
+                  <Grid container spacing={1}>
+                    {/* Empty corner cell */}
+                    <Grid item xs={1}>
+                      <Box sx={{ height: '50px' }}></Box>
+                    </Grid>
                     
-                    // Get the date for this cell based on the current week
-                    const cellDate = getDayDate(getCurrentWeekStartDate(), day as Day);
-                    const cellTimeSlot: TimeSlot = { 
-                      day: day as Day, 
-                      period: periodIndex as Period,
-                      date: cellDate
-                    };
-                    
-                    return (
-                      <Grid item xs key={`${day}-${periodIndex}`} 
-                            sx={{ position: 'relative' }}>
-                        <Box sx={{ 
-                          height: '100px', 
-                          border: '1px solid rgba(224, 224, 224, 0.4)',
-                          borderRadius: '4px',
-                          transition: 'all 0.2s ease'
-                        }}>
-                          <DroppableCell
-                            timeSlot={cellTimeSlot}
-                            onDrop={handleDropOnCell}
-                            isValidDropTarget={(item) => isValidDropTarget(item, cellTimeSlot)}
-                            isEmpty={isEmpty}
-                            classes={classes}
-                            schedule={currentSchedule}
-                          >
-                            {classObj && classId && (
-                              <DraggableClassItem
-                                classObj={classObj}
-                                classId={classId}
-                                day={day}
-                                period={periodIndex}
-                                date={cellDate}
-                              />
-                            )}
-                          </DroppableCell>
+                    {/* Day headers */}
+                    {DAYS_OF_WEEK.map(day => (
+                      <Grid item xs={2} key={day}>
+                        <Box 
+                          sx={{ 
+                            textAlign: 'center', 
+                            fontWeight: 'bold',
+                            p: 1,
+                            backgroundColor: 'primary.light',
+                            borderRadius: '4px 4px 0 0',
+                            color: 'primary.contrastText'
+                          }}
+                        >
+                          {formatDayHeader(day as Day, getCurrentWeekStartDate())}
                         </Box>
                       </Grid>
-                    );
-                  })}
-                </React.Fragment>
-              ))}
-            </Grid>
-            
-            <TemporaryDropZone 
-              tempClasses={tempClasses}
-              onDrop={handleDropOnTempStorage}
-              onDragStart={handleDragStartFromTemp}
-              onDragEnd={handleDragEndFromTemp}
-              draggableRender={(classId, classObj) => (
-                <DraggableClassItem
-                  classObj={classObj}
-                  classId={classId}
-                  day={Day.UNASSIGNED}
-                  period={0}
-                  isUnassigned={true}
+                    ))}
+                  </Grid>
+                  
+                  {/* Period rows */}
+                  {Array.from({ length: PERIODS_PER_DAY }).map((_, periodIndex) => (
+                    <Grid container spacing={1} key={periodIndex} sx={{ mt: 0.5 }}>
+                      {/* Period label */}
+                      <Grid item xs={1}>
+                        <Box 
+                          sx={{ 
+                            display: 'flex', 
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            height: '100px',
+                            backgroundColor: 'grey.100',
+                            p: 1,
+                            fontWeight: 'medium'
+                          }}
+                        >
+                          Period {periodIndex + 1}
+                        </Box>
+                      </Grid>
+                      
+                      {/* Day cells for this period */}
+                      {DAYS_OF_WEEK.map(day => {
+                        const classId = findClassForTimeSlot(day as Day, periodIndex as Period);
+                        const classObj = classId ? getClassById(classId) : undefined;
+                        const isEmpty = !classId;
+                        
+                        // Get the date for this cell based on the current week
+                        const cellDate = getDayDate(getCurrentWeekStartDate(), day as Day);
+                        const cellTimeSlot: TimeSlot = { 
+                          day: day as Day, 
+                          period: periodIndex as Period,
+                          date: cellDate
+                        };
+                        
+                        return (
+                          <Grid item xs={2} key={`${day}-${periodIndex}`} 
+                                sx={{ position: 'relative' }}>
+                            <Box sx={{ 
+                              height: '100px', 
+                              border: '1px solid rgba(224, 224, 224, 0.4)',
+                              borderRadius: '4px',
+                              transition: 'all 0.2s ease'
+                            }}>
+                              <DroppableCell
+                                timeSlot={cellTimeSlot}
+                                onDrop={handleDropOnCell}
+                                isValidDropTarget={(item) => isValidDropTarget(item, cellTimeSlot)}
+                                isEmpty={isEmpty}
+                                classes={classes}
+                                schedule={currentSchedule}
+                              >
+                                {classObj && classId && (
+                                  <DraggableClassItem
+                                    classObj={classObj}
+                                    classId={classId}
+                                    day={day}
+                                    period={periodIndex}
+                                    date={cellDate}
+                                  />
+                                )}
+                              </DroppableCell>
+                            </Box>
+                          </Grid>
+                        );
+                      })}
+                    </Grid>
+                  ))}
+                </Box>
+                
+                <TemporaryDropZone 
+                  tempClasses={tempClasses}
+                  onDrop={handleDropOnTempStorage}
+                  onDragStart={handleDragStartFromTemp}
+                  onDragEnd={handleDragEndFromTemp}
+                  draggableRender={(classId, classObj) => (
+                    <DraggableClassItem
+                      classObj={classObj}
+                      classId={classId}
+                      day={Day.UNASSIGNED}
+                      period={0}
+                      isUnassigned={true}
+                    />
+                  )}
                 />
-              )}
-            />
-          </DndProvider>
-        </Paper>
-      )}
-      
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
-        <Tooltip title="Re-optimize the schedule while preserving your manual adjustments">
-          <span>
+              </DndProvider>
+            </Paper>
+          )}
+          
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
+            <Tooltip title="Re-optimize the schedule while preserving your manual adjustments">
+              <span>
+                <Button 
+                  variant="outlined" 
+                  color="secondary" 
+                  onClick={handleReOptimize}
+                  disabled={isReOptimizing || manuallyAdjustedClasses.size === 0}
+                >
+                  {isReOptimizing ? 'Re-Optimizing...' : 'Re-Optimize Schedule'}
+                </Button>
+              </span>
+            </Tooltip>
+            
             <Button 
-              variant="outlined" 
-              color="secondary" 
-              onClick={handleReOptimize}
-              disabled={isReOptimizing || manuallyAdjustedClasses.size === 0}
+              variant="contained" 
+              color="primary" 
+              onClick={handleSaveSchedule}
             >
-              {isReOptimizing ? 'Re-Optimizing...' : 'Re-Optimize Schedule'}
+              Save Schedule
             </Button>
-          </span>
-        </Tooltip>
-        
-        <Button 
-          variant="contained" 
-          color="primary" 
-          onClick={handleSaveSchedule}
-        >
-          Save Schedule
-        </Button>
+          </Box>
+          
+          {/* Re-optimization confirmation dialog */}
+          <Dialog
+            open={reOptimizeDialogOpen}
+            onClose={cancelReOptimize}
+          >
+            <DialogTitle>Confirm Schedule Re-Optimization</DialogTitle>
+            <DialogContent>
+              <DialogContentText>
+                Re-optimization will keep your {manuallyAdjustedClasses.size} manually adjusted classes in their current positions, 
+                while optimizing the schedule for the remaining classes. This may significantly change 
+                the positions of non-adjusted classes to achieve the best overall schedule.
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={cancelReOptimize} color="primary">
+                Cancel
+              </Button>
+              <Button onClick={confirmReOptimize} color="primary" variant="contained">
+                Re-Optimize
+              </Button>
+            </DialogActions>
+          </Dialog>
+          
+          {/* Constraints dialog */}
+          <Dialog
+            open={constraintsDialogOpen}
+            onClose={handleConstraintsDialogClose}
+          >
+            <DialogTitle>Constraints</DialogTitle>
+            <DialogContent>
+              <DialogContentText>
+                Constraints are used to guide the scheduling algorithm. You can view and edit the constraints below.
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleConstraintsDialogClose} color="primary">
+                Close
+              </Button>
+            </DialogActions>
+          </Dialog>
+          
+          {/* Enhanced notification system */}
+          <Snackbar
+            open={notification.open}
+            autoHideDuration={4000}
+            onClose={handleCloseNotification}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          >
+            <Alert 
+              onClose={handleCloseNotification} 
+              severity={notification.severity}
+              sx={{ width: '100%' }}
+              variant="filled"
+            >
+              {notification.message}
+            </Alert>
+          </Snackbar>
+        </Box>
       </Box>
-      
-      {/* Re-optimization confirmation dialog */}
-      <Dialog
-        open={reOptimizeDialogOpen}
-        onClose={cancelReOptimize}
-      >
-        <DialogTitle>Confirm Schedule Re-Optimization</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Re-optimization will keep your {manuallyAdjustedClasses.size} manually adjusted classes in their current positions, 
-            while optimizing the schedule for the remaining classes. This may significantly change 
-            the positions of non-adjusted classes to achieve the best overall schedule.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={cancelReOptimize} color="primary">
-            Cancel
-          </Button>
-          <Button onClick={confirmReOptimize} color="primary" variant="contained">
-            Re-Optimize
-          </Button>
-        </DialogActions>
-      </Dialog>
-      
-      {/* Enhanced notification system */}
-      <Snackbar
-        open={notification.open}
-        autoHideDuration={4000}
-        onClose={handleCloseNotification}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert 
-          onClose={handleCloseNotification} 
-          severity={notification.severity}
-          sx={{ width: '100%' }}
-          variant="filled"
-        >
-          {notification.message}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 };

@@ -127,4 +127,6 @@ export interface GeneticAlgorithmConfig {
   tournamentSize: number;
   crossoverRate: number;
   mutationRate: number;
+  maxClassesPerDay?: number;
+  maxClassesPerWeek?: number;
 }

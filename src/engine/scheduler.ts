@@ -1,4 +1,4 @@
-import { Class, Schedule, GeneticAlgorithmConfig, Day, Assignment } from '../models/types';
+import { Class, Schedule, GeneticAlgorithmConfig, Day, Assignment, ConstraintType, Constraint } from '../models/types';
 import { GeneticAlgorithm } from './geneticAlgorithm';
 import { FitnessEvaluator } from './fitness';
 import { Chromosome } from './chromosome';
@@ -22,6 +22,10 @@ export class GymClassScheduler {
   private classes: Class[] = [];
   private config: GeneticAlgorithmConfig;
   private fitnessEvaluator: FitnessEvaluator;
+  private constraints: { hard: any; soft: any } = {
+    hard: {},
+    soft: {}
+  };
 
   /**
    * Creates a new GymClassScheduler
@@ -38,7 +42,155 @@ export class GymClassScheduler {
    */
   setClasses(classes: Class[]): void {
     this.classes = [...classes];
-    this.fitnessEvaluator = new FitnessEvaluator(this.classes);
+    this.fitnessEvaluator = new FitnessEvaluator(this.classes, this.createConstraintObjects());
+  }
+
+  /**
+   * Sets scheduling constraints
+   * @param constraints An object containing hard and soft constraints
+   */
+  setConstraints(constraints: { hard: any; soft: any }): void {
+    this.constraints = constraints;
+    // Update the fitness evaluator with the new constraints
+    this.fitnessEvaluator = new FitnessEvaluator(this.classes, this.createConstraintObjects());
+  }
+
+  /**
+   * Creates constraint objects from the current constraints
+   * @returns Array of constraint objects
+   */
+  private createConstraintObjects(): Constraint[] {
+    const constraints: Constraint[] = [];
+    
+    // If no constraints are set, return an empty array
+    if (!this.constraints) {
+      return constraints;
+    }
+    
+    // Personal conflicts (hard constraints)
+    if (this.constraints.hard.personalConflicts) {
+      for (const conflict of this.constraints.hard.personalConflicts) {
+        constraints.push({
+          id: `personal-conflict-${conflict.day}-${conflict.period}`,
+          type: ConstraintType.HARD,
+          weight: 1.0,
+          parameters: {
+            day: conflict.day,
+            period: conflict.period
+          }
+        });
+      }
+    }
+    
+    // Max consecutive periods per day
+    if (this.constraints.hard.maxConsecutivePeriods !== undefined) {
+      constraints.push({
+        id: 'max-consecutive-periods',
+        type: ConstraintType.HARD,
+        weight: 1.0,
+        parameters: {
+          maxConsecutive: this.constraints.hard.maxConsecutivePeriods
+        }
+      });
+    }
+    
+    // Min classes per day
+    if (this.constraints.hard.dailyMinClasses !== undefined) {
+      constraints.push({
+        id: 'min-classes-per-day',
+        type: ConstraintType.HARD,
+        weight: 1.0,
+        parameters: {
+          minClasses: this.constraints.hard.dailyMinClasses
+        }
+      });
+    }
+    
+    // Max classes per day
+    if (this.constraints.hard.dailyMaxClasses !== undefined) {
+      constraints.push({
+        id: 'max-classes-per-day',
+        type: ConstraintType.HARD,
+        weight: 1.0,
+        parameters: {
+          maxClasses: this.constraints.hard.dailyMaxClasses
+        }
+      });
+    }
+    
+    // Min classes per week
+    if (this.constraints.hard.weeklyMinClasses !== undefined) {
+      constraints.push({
+        id: 'min-classes-per-week',
+        type: ConstraintType.HARD,
+        weight: 1.0,
+        parameters: {
+          minClasses: this.constraints.hard.weeklyMinClasses
+        }
+      });
+    }
+    
+    // Max classes per week
+    if (this.constraints.hard.weeklyMaxClasses !== undefined) {
+      constraints.push({
+        id: 'max-classes-per-week',
+        type: ConstraintType.HARD,
+        weight: 1.0,
+        parameters: {
+          maxClasses: this.constraints.hard.weeklyMaxClasses
+        }
+      });
+    }
+    
+    // Add soft constraints
+    if (this.constraints.soft) {
+      // Teacher preferences
+      if (this.constraints.soft.teacherPreferences) {
+        // Preferred time slots
+        if (this.constraints.soft.teacherPreferences.preferred) {
+          for (const pref of this.constraints.soft.teacherPreferences.preferred) {
+            constraints.push({
+              id: `teacher-preferred-${pref.classId}-${pref.timeSlot.day}-${pref.timeSlot.period}`,
+              type: ConstraintType.SOFT,
+              weight: 0.5,
+              parameters: {
+                classId: pref.classId,
+                day: pref.timeSlot.day,
+                period: pref.timeSlot.period
+              }
+            });
+          }
+        }
+        
+        // Not preferred time slots
+        if (this.constraints.soft.teacherPreferences.notPreferred) {
+          for (const pref of this.constraints.soft.teacherPreferences.notPreferred) {
+            constraints.push({
+              id: `teacher-not-preferred-${pref.classId}-${pref.timeSlot.day}-${pref.timeSlot.period}`,
+              type: ConstraintType.SOFT,
+              weight: 0.5,
+              parameters: {
+                classId: pref.classId,
+                day: pref.timeSlot.day,
+                period: pref.timeSlot.period
+              }
+            });
+          }
+        }
+      }
+      
+      // Workload balance
+      if (this.constraints.soft.balanceWorkload) {
+        constraints.push({
+          id: 'balance-workload',
+          type: ConstraintType.SOFT,
+          weight: 0.3,
+          parameters: {}
+        });
+      }
+    }
+    
+    return constraints;
   }
 
   /**
@@ -62,14 +214,26 @@ export class GymClassScheduler {
       [key: string]: any;
     };
   } {
-    return {
-      hard: {
-        // Add any hard constraints here if needed
-      },
-      soft: {
-        // Add any soft constraints here if needed
-      }
-    };
+    console.log('========= ACTIVE SCHEDULING CONSTRAINTS =========');
+    console.log('Hard constraints:', {
+      dailyMaxClasses: this.constraints.hard?.dailyMaxClasses,
+      weeklyMaxClasses: this.constraints.hard?.weeklyMaxClasses,
+      personalConflictsCount: this.constraints.hard?.personalConflicts?.length || 0,
+      classSpecificConstraintsCount: Object.keys(this.constraints.hard || {})
+        .filter(key => key.startsWith('class-'))
+        .length
+    });
+    
+    if (this.constraints.hard?.personalConflicts && this.constraints.hard.personalConflicts.length > 0) {
+      console.log('Personal conflicts:', this.constraints.hard.personalConflicts);
+    }
+    
+    console.log('Soft constraints:', {
+      constraints: Object.keys(this.constraints.soft || {})
+    });
+    console.log('================================================');
+    
+    return { ...this.constraints };
   }
 
   /**
@@ -78,25 +242,68 @@ export class GymClassScheduler {
    */
   generateSchedule(): Schedule {
     if (this.classes.length === 0) {
-      return { assignments: [], fitness: 0, hardConstraintViolations: 0, softConstraintSatisfaction: 0 };
+      throw new Error('No classes to schedule');
     }
-
-    // Create and run the genetic algorithm
-    const ga = new GeneticAlgorithm(this.classes, this.config);
-    const bestChromosome = ga.evolve();
     
-    // Get statistics
-    const stats = ga.getStatistics();
+    console.log('GymClassScheduler: Generating schedule with', this.classes.length, 'classes');
     
-    // Create the schedule from the best chromosome
-    const schedule: Schedule = {
-      assignments: bestChromosome.getGenes(),
-      fitness: stats.bestFitness,
-      hardConstraintViolations: stats.hardConstraintViolations,
-      softConstraintSatisfaction: 0 // Calculate this if needed
+    if (this.constraints) {
+      console.log('GymClassScheduler: Using constraints:', JSON.stringify(this.constraints, null, 2));
+    }
+    
+    // Get max classes per day and week constraints
+    const maxClassesPerDay = this.constraints?.hard?.dailyMaxClasses || 10;
+    const maxClassesPerWeek = this.constraints?.hard?.weeklyMaxClasses || this.classes.length;
+    
+    // If we have a weekly max constraint, limit the classes we schedule
+    let classesToSchedule = [...this.classes];
+    if (maxClassesPerWeek < classesToSchedule.length) {
+      // Randomly select the maximum number of classes
+      classesToSchedule = classesToSchedule
+        .sort(() => Math.random() - 0.5)
+        .slice(0, maxClassesPerWeek);
+      
+      console.log(`Limited scheduling to ${maxClassesPerWeek} classes due to weekly max constraint`);
+    }
+    
+    // Create constraint objects from the constraints
+    const constraints = this.createConstraintObjects();
+    
+    // Create a fitness evaluator
+    const fitnessEvaluator = new FitnessEvaluator(classesToSchedule, constraints);
+    
+    // Setup genetic algorithm config
+    const geneticAlgorithmConfig: GeneticAlgorithmConfig = {
+      populationSize: 100,
+      generations: 100,
+      crossoverRate: 0.8,
+      mutationRate: 0.2,
+      tournamentSize: 5,
+      maxClassesPerDay,
+      maxClassesPerWeek
     };
-
-    return schedule;
+    
+    // Create and run genetic algorithm
+    const geneticAlgorithm = new GeneticAlgorithm(
+      classesToSchedule,
+      geneticAlgorithmConfig,
+      fitnessEvaluator
+    );
+    
+    const bestChromosome = geneticAlgorithm.evolve();
+    const fitnessResult = fitnessEvaluator.evaluate(bestChromosome);
+    
+    // Create schedule from best chromosome
+    const assignments = bestChromosome.getGenes();
+    
+    console.log('GymClassScheduler: Generated schedule with', assignments.length, 'assignments');
+    
+    return {
+      assignments,
+      fitness: fitnessResult.fitnessScore,
+      hardConstraintViolations: fitnessResult.hardConstraintViolations,
+      softConstraintSatisfaction: fitnessResult.softConstraintSatisfaction
+    };
   }
 
   /**

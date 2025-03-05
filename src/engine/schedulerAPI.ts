@@ -6,7 +6,8 @@ import {
   Day, 
   Period, 
   TimeSlot,
-  Assignment
+  Assignment,
+  SchedulingConstraints
 } from '../models/types';
 import { dataUtils } from '../utils/dataUtils';
 import { isTestEnv } from '../utils/testing';
@@ -24,6 +25,7 @@ export class SchedulerAPI {
   private scheduler: GymClassScheduler;
   private classes: Class[] = [];
   private currentSchedule: Schedule | null = null;
+  private constraints: SchedulingConstraints | null = null;
 
   /**
    * Creates a new SchedulerAPI instance
@@ -53,6 +55,12 @@ export class SchedulerAPI {
     const savedSchedule = dataUtils.loadSchedule();
     if (savedSchedule) {
       this.currentSchedule = savedSchedule;
+    }
+
+    // Load constraints
+    const savedConstraints = dataUtils.loadConstraints();
+    if (savedConstraints) {
+      this.constraints = savedConstraints;
     }
   }
 
@@ -168,17 +176,91 @@ export class SchedulerAPI {
   }
 
   /**
+   * Sets the scheduling constraints
+   * @param constraints Scheduling constraints object
+   */
+  setConstraints(constraints: SchedulingConstraints): void {
+    this.constraints = { ...constraints };
+    this.scheduler.setConstraints(constraints);
+    
+    // Persist to storage if not in test environment
+    if (!isTestEnv()) {
+      dataUtils.saveConstraints(constraints);
+    }
+  }
+
+  /**
+   * Gets the current scheduling constraints
+   * @returns Current scheduling constraints, or default constraints if none set
+   */
+  getConstraints(): SchedulingConstraints {
+    return this.constraints || this.getDefaultConstraints();
+  }
+
+  /**
+   * Creates default scheduling constraints
+   * @returns Default scheduling constraints
+   */
+  private getDefaultConstraints(): SchedulingConstraints {
+    const nextMonday = this.getNextMonday();
+    return {
+      hard: {
+        personalConflicts: [],
+        maxConsecutivePeriods: 3,
+        dailyMinClasses: 1,
+        dailyMaxClasses: 6,
+        weeklyMinClasses: 0,
+        weeklyMaxClasses: 30,
+        rotationStartDate: nextMonday
+      },
+      soft: {
+        teacherPreferences: {
+          preferred: [],
+          notPreferred: []
+        },
+        balanceWorkload: true
+      }
+    };
+  }
+
+  /**
    * Generates a schedule using the current classes and configuration
    * @param startDate Optional start date for the schedule (defaults to the next Monday)
    * @returns A Schedule object
    */
   generateSchedule(startDate?: Date): Schedule {
     if (this.classes.length === 0) {
+      console.warn('Scheduler API: No classes to schedule');
       throw new Error('No classes to schedule');
+    }
+    
+    console.log('Scheduler API: Generating schedule with', this.classes.length, 'classes');
+    
+    // Make sure constraints are set before generating schedule
+    if (this.constraints) {
+      this.scheduler.setConstraints(this.constraints);
+      console.log('Scheduler API: Using constraints:', JSON.stringify({
+        hard: {
+          personalConflicts: this.constraints.hard.personalConflicts?.length || 0,
+          maxConsecutivePeriods: this.constraints.hard.maxConsecutivePeriods,
+          dailyMinClasses: this.constraints.hard.dailyMinClasses,
+          dailyMaxClasses: this.constraints.hard.dailyMaxClasses,
+          weeklyMinClasses: this.constraints.hard.weeklyMinClasses,
+          weeklyMaxClasses: this.constraints.hard.weeklyMaxClasses,
+          rotationStartDate: this.constraints.hard.rotationStartDate
+        },
+        soft: this.constraints.soft
+      }, null, 2));
+    } else {
+      console.warn('Scheduler API: No constraints set, using default constraints');
+      this.constraints = this.getDefaultConstraints();
+      this.scheduler.setConstraints(this.constraints);
     }
     
     // Generate a basic schedule
     const generatedSchedule = this.scheduler.generateSchedule();
+    console.log('Scheduler API: Raw generated schedule:', generatedSchedule);
+    console.log('Scheduler API: Assignments in raw schedule:', generatedSchedule.assignments?.length || 0);
     
     // Determine the start date
     let scheduleStartDate: Date;
@@ -186,7 +268,7 @@ export class SchedulerAPI {
       scheduleStartDate = startDate;
     } else {
       // Use the rotation start date from constraints if available
-      const constraints = this.scheduler.getConstraints();
+      const constraints = this.getConstraints();
       if (constraints.hard.rotationStartDate) {
         scheduleStartDate = constraints.hard.rotationStartDate;
       } else {
@@ -222,17 +304,36 @@ export class SchedulerAPI {
    * @returns The enhanced schedule
    */
   enhanceScheduleWithDates(schedule: Schedule): Schedule {
-    // First enhance all assignments with dates
-    const withDates = enhanceAssignmentsWithDates(schedule.assignments, schedule.startDate);
+    console.log('Enhancing schedule with dates, schedule:', schedule);
     
-    // Create a new schedule with the enhanced assignments
-    const enhancedSchedule = {
-      ...schedule,
-      assignments: withDates
-    };
+    if (!schedule.startDate) {
+      console.warn('Schedule has no start date, using current date');
+      schedule.startDate = new Date();
+    }
+    
+    // First enhance all assignments with dates
+    const enhancedResult = enhanceAssignmentsWithDates(schedule, schedule.startDate);
+    console.log('Schedule enhanced with dates, result type:', Array.isArray(enhancedResult) ? 'Array' : 'Schedule');
+    
+    // Handle the return type properly - it could be a Schedule or an array of Assignments
+    let enhancedSchedule: Schedule;
+    if (Array.isArray(enhancedResult)) {
+      // If we got an array of assignments back
+      enhancedSchedule = {
+        ...schedule,
+        assignments: enhancedResult
+      };
+    } else {
+      // If we got a Schedule object back
+      enhancedSchedule = enhancedResult;
+    }
     
     // Then organize into weeks
-    return organizeScheduleIntoWeeks(enhancedSchedule);
+    console.log('Organizing schedule into weeks...');
+    const organizedSchedule = organizeScheduleIntoWeeks(enhancedSchedule);
+    console.log('Schedule organized into weeks:', organizedSchedule.weeks?.length || 0);
+    
+    return organizedSchedule;
   }
   
   /**
